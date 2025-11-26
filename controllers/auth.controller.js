@@ -14,9 +14,11 @@ const getKakaoAuthUrl = (req, res) => {
     });
   }
 
+  // 프론트엔드 URL을 기본값으로 사용 (카카오는 프론트엔드로 리다이렉트)
   const REDIRECT_URI =
     process.env.KAKAO_REDIRECT_URI ||
-    `${req.protocol}://${req.get("host")}/api/auth/kakao/callback`;
+    process.env.FRONTEND_URL + "/auth/callback" ||
+    "http://localhost:3000/auth/callback";
 
   // 리다이렉트 URI 인코딩 (정확한 일치 필요)
   const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
@@ -64,7 +66,8 @@ const kakaoCallback = async (req, res) => {
           client_secret: process.env.KAKAO_CLIENT_SECRET,
           redirect_uri:
             process.env.KAKAO_REDIRECT_URI ||
-            `${req.protocol}://${req.get("host")}/api/auth/kakao/callback`,
+            process.env.FRONTEND_URL + "/auth/callback" ||
+            "http://localhost:3000/auth/callback",
           code: code,
         },
         headers: {

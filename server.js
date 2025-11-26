@@ -20,6 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use("/api/health", require("./routes/health.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
+app.use("/api/measurement", require("./routes/measurement.routes"));
 // Add more routes here as needed
 // app.use('/api/users', require('./routes/user.routes'));
 

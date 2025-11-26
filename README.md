@@ -5,17 +5,17 @@
 ## ✨ 주요 기능
 
 - RESTful API 구조
-- 보안 미들웨어 (Helmet)
-- CORS 지원
-- 요청 로깅 (Morgan)
-- 환경 변수 설정
-- 에러 핸들링
-- Health check 엔드포인트
+- 카카오 소셜 로그인
+- JWT 토큰 기반 인증
+- 체력 측정 및 AI 운동 레시피 생성
+- MySQL 데이터베이스 연동
+- 보안 미들웨어 (Helmet, CORS)
 
 ## 🔧 필요 사항
 
 - Node.js (v14 이상)
 - npm
+- MySQL (v5.7 이상)
 
 ## 📦 설치 및 실행
 
@@ -37,7 +37,7 @@ npm install
 cp env.example .env
 ```
 
-4. `.env` 파일에서 포트 등 설정 (필요시)
+4. `.env` 파일 설정 (카카오 API 키, DB 정보 등)
 
 5. 서버 실행:
 
@@ -49,7 +49,7 @@ npm run dev
 npm start
 ```
 
-서버는 `http://localhost:3000`에서 실행됩니다.
+서버는 `http://localhost:3001`에서 실행됩니다.
 
 ## 📁 프로젝트 구조
 
@@ -58,68 +58,582 @@ Health_Keeper_BackEnd/
 ├── server.js              # 서버 진입점
 ├── package.json           # 의존성 및 스크립트
 ├── routes/                # API 라우트
+│   ├── health.routes.js
+│   ├── auth.routes.js
+│   └── measurement.routes.js
 ├── controllers/           # 컨트롤러
+│   ├── auth.controller.js
+│   └── measurement.controller.js
 ├── middleware/            # 미들웨어
+│   └── auth.js
 ├── config/                # 설정 파일
-├── models/                # 데이터 모델
+│   └── database.js
 ├── services/              # 비즈니스 로직
+│   └── ai.service.js
 └── utils/                 # 유틸리티
+    └── logger.js
 ```
 
 ## 🔌 API 엔드포인트
 
-### Health Check
+### Base URL
 
-- **GET** `/api/health` - 서버 상태 확인
+```
+http://localhost:3001/api
+```
 
-### Root
+---
 
-- **GET** `/` - API 서버 정보
+## 1. Health Check
+
+### GET `/api/health`
+
+서버 상태 확인
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/health
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "message": "Health check passed",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "uptime": 123.456
+}
+```
+
+---
+
+## 2. 인증 (Authentication)
+
+### 2.1 카카오 로그인 URL 가져오기
+
+### GET `/api/auth/kakao`
+
+카카오 로그인 인증 URL 반환
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/auth/kakao
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "authUrl": "https://kauth.kakao.com/oauth/authorize?client_id=..."
+}
+```
+
+**사용 예시:**
+
+```javascript
+const response = await fetch("http://localhost:3001/api/auth/kakao");
+const { authUrl } = await response.json();
+window.location.href = authUrl;
+```
+
+---
+
+### 2.2 카카오 로그인 콜백
+
+### GET `/api/auth/kakao/callback`
+
+카카오 로그인 후 콜백 처리 (자동 리다이렉트)
+
+**요청:**
+
+```
+GET http://localhost:3001/api/auth/kakao/callback?code=AUTHORIZATION_CODE
+```
+
+**응답:**
+
+- 성공: 프론트엔드로 리다이렉트
+  ```
+  http://localhost:3000/auth/callback?token=JWT_TOKEN&success=true
+  ```
+- 실패: 에러와 함께 리다이렉트
+  ```
+  http://localhost:3000/auth/callback?success=false&error=ERROR_MESSAGE
+  ```
+
+---
+
+### 2.3 현재 사용자 정보 조회
+
+### GET `/api/auth/me`
+
+JWT 토큰으로 현재 로그인한 사용자 정보 조회
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/auth/me
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 1,
+    "provider": "kakao",
+    "email": "user@example.com",
+    "name": "홍길동",
+    "created_at": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
+
+**에러 응답:**
+
+```json
+{
+  "success": false,
+  "message": "유효하지 않은 토큰입니다"
+}
+```
+
+**사용 예시:**
+
+```javascript
+const token = localStorage.getItem("token");
+const response = await fetch("http://localhost:3001/api/auth/me", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+const data = await response.json();
+```
+
+---
+
+### 2.4 로그아웃
+
+### POST `/api/auth/logout`
+
+로그아웃 (클라이언트에서 토큰 삭제)
+
+**요청:**
+
+```bash
+POST http://localhost:3001/api/auth/logout
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "message": "로그아웃되었습니다"
+}
+```
+
+---
+
+## 3. 체력 측정 및 운동 레시피
+
+### 3.1 체력 측정 및 레시피 생성
+
+### POST `/api/measurement`
+
+체력 측정 정보를 입력하고 AI 서버를 호출하여 운동 레시피 생성
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+Content-Type: application/json
+```
+
+**요청 Body:**
+
+```json
+{
+  "height": 170, // 키 (cm) - 필수
+  "weight": 70, // 몸무게 (kg) - 필수
+  "age": 25, // 나이 - 필수
+  "gender": "M", // 성별 (M/F) - 필수
+  "activityLevel": "moderate", // 활동 수준 (low/moderate/high) - 선택
+  "goal": "health", // 목표 (health/weight_loss/muscle_gain) - 선택
+  "healthConditions": "고혈압" // 건강 상태 - 선택
+}
+```
+
+**요청 예시:**
+
+```bash
+POST http://localhost:3001/api/measurement
+Headers:
+  Authorization: Bearer {JWT_TOKEN}
+  Content-Type: application/json
+Body:
+{
+  "height": 170,
+  "weight": 70,
+  "age": 25,
+  "gender": "M",
+  "activityLevel": "moderate",
+  "goal": "health"
+}
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "message": "체력 측정 및 운동 레시피가 생성되었습니다.",
+  "data": {
+    "measurement": {
+      "id": 1,
+      "measurement_data": {
+        "height": 170,
+        "weight": 70,
+        "age": 25,
+        "gender": "M",
+        "activityLevel": "moderate",
+        "goal": "health"
+      }
+    },
+    "recipe": {
+      "id": 1,
+      "measurement_id": 1,
+      "category_id": 1,
+      "recipe_title": "건강 유지 맞춤 운동 프로그램",
+      "recipe_intro": "BMI 24.2 기준으로 건강 유지에 효과적인 운동 프로그램입니다.",
+      "difficulty": "초급",
+      "duration_min": 30,
+      "fitness_grade": "보통",
+      "fitness_score": 50,
+      "exercise_cards": [
+        {
+          "id": 1,
+          "exercise_name": "스트레칭",
+          "description": "전신 근육 이완 및 유연성 향상",
+          "duration": 10
+        },
+        {
+          "id": 2,
+          "exercise_name": "유산소 운동",
+          "description": "심폐 기능 향상 및 칼로리 소모",
+          "duration": 20
+        }
+      ],
+      "created_at": "2024-01-01T00:00:00.000Z"
+    }
+  }
+}
+```
+
+**에러 응답:**
+
+```json
+{
+  "success": false,
+  "message": "키, 몸무게, 나이, 성별은 필수 입력 항목입니다."
+}
+```
+
+**사용 예시:**
+
+```javascript
+const token = localStorage.getItem("token");
+const response = await fetch("http://localhost:3001/api/measurement", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    height: 170,
+    weight: 70,
+    age: 25,
+    gender: "M",
+    activityLevel: "moderate",
+    goal: "health",
+  }),
+});
+const data = await response.json();
+```
+
+---
+
+### 3.2 측정 기록 조회
+
+### GET `/api/measurement`
+
+사용자의 모든 측정 기록 조회
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/measurement
+Headers:
+  Authorization: Bearer {JWT_TOKEN}
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "measurement_data": {
+        "height": 170,
+        "weight": 70,
+        "age": 25,
+        "gender": "M"
+      },
+      "recipe_id": 1,
+      "recipe_title": "건강 유지 맞춤 운동 프로그램",
+      "fitness_score": 50,
+      "created_at": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### 3.3 특정 측정 기록 조회
+
+### GET `/api/measurement/:id`
+
+특정 측정 기록 상세 조회
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/measurement/1
+Headers:
+  Authorization: Bearer {JWT_TOKEN}
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "user_id": 1,
+    "measurement_data": {
+      "height": 170,
+      "weight": 70,
+      "age": 25,
+      "gender": "M",
+      "activityLevel": "moderate",
+      "goal": "health"
+    },
+    "created_at": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
+
+---
+
+### 3.4 레시피 조회
+
+### GET `/api/measurement/:id/recipe`
+
+특정 측정 기록의 운동 레시피 조회
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/measurement/1/recipe
+Headers:
+  Authorization: Bearer {JWT_TOKEN}
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "measurement_id": 1,
+    "category_id": 1,
+    "recipe_title": "건강 유지 맞춤 운동 프로그램",
+    "recipe_intro": "BMI 24.2 기준으로 건강 유지에 효과적인 운동 프로그램입니다.",
+    "difficulty": "초급",
+    "duration_min": 30,
+    "fitness_grade": "보통",
+    "fitness_score": 50,
+    "exercise_cards": [
+      {
+        "id": 1,
+        "exercise_name": "스트레칭",
+        "description": "전신 근육 이완 및 유연성 향상",
+        "duration": 10
+      }
+    ],
+    "created_at": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
+
+---
+
+## 🔐 인증 (Authentication)
+
+대부분의 API는 JWT 토큰 인증이 필요합니다.
+
+**인증이 필요한 API:**
+
+- `GET /api/auth/me`
+- `POST /api/measurement`
+- `GET /api/measurement`
+- `GET /api/measurement/:id`
+- `GET /api/measurement/:id/recipe`
+
+**인증 방법:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**토큰 획득:**
+
+1. 카카오 로그인 완료 후 프론트엔드 콜백에서 토큰 받기
+2. `localStorage` 또는 쿠키에 저장
+3. API 호출 시 헤더에 포함
+
+---
+
+## ⚙️ 환경 변수 설정
+
+`.env` 파일 설정:
+
+```env
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# MySQL Database Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=contest
+DB_USER=root
+DB_PASSWORD=your_password
+
+# JWT Configuration
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=7d
+
+# Kakao OAuth Configuration
+KAKAO_CLIENT_ID=your_kakao_rest_api_key
+KAKAO_CLIENT_SECRET=your_kakao_client_secret
+KAKAO_REDIRECT_URI=http://localhost:3001/api/auth/kakao/callback
+
+# Frontend URL (React)
+FRONTEND_URL=http://localhost:3000
+
+# AI Server Configuration
+AI_SERVER_URL=http://localhost:8000
+```
+
+---
 
 ## 🛠 사용 기술
 
-- Node.js, Express.js
-- CORS, Helmet, Morgan
-- dotenv, express-validator
+- **Node.js** - JavaScript 런타임
+- **Express.js** - 웹 프레임워크
+- **MySQL2** - MySQL 데이터베이스 드라이버
+- **JWT** - JSON Web Token 인증
+- **Axios** - HTTP 클라이언트
+- **CORS** - Cross-Origin Resource Sharing
+- **Helmet** - 보안 미들웨어
+- **Morgan** - HTTP 요청 로거
+- **dotenv** - 환경 변수 관리
 
-## 📝 개발 가이드
+---
 
-### 새 라우트 추가
+## 📝 에러 코드
 
-1. `routes/` 디렉토리에 파일 생성:
+| HTTP 상태 코드 | 설명                  |
+| -------------- | --------------------- |
+| 200            | 성공                  |
+| 201            | 생성 성공             |
+| 400            | 잘못된 요청           |
+| 401            | 인증 필요             |
+| 403            | 권한 없음             |
+| 404            | 리소스를 찾을 수 없음 |
+| 500            | 서버 오류             |
 
-```javascript
-const express = require("express");
-const router = express.Router();
+---
 
-router.get("/", (req, res) => {
-  res.json({ success: true });
-});
+## 🔍 테스트 방법
 
-module.exports = router;
+### cURL 예시
+
+```bash
+# Health Check
+curl http://localhost:3001/api/health
+
+# 카카오 로그인 URL
+curl http://localhost:3001/api/auth/kakao
+
+# 사용자 정보 조회 (토큰 필요)
+curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/api/auth/me
+
+# 체력 측정
+curl -X POST http://localhost:3001/api/measurement \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "height": 170,
+    "weight": 70,
+    "age": 25,
+    "gender": "M"
+  }'
 ```
 
-2. `server.js`에 등록:
+---
 
-```javascript
-app.use("/api/example", require("./routes/example.routes"));
-```
+## 📄 라이선스
 
-### 에러 처리
-
-```javascript
-const err = new Error("에러 메시지");
-err.statusCode = 400;
-throw err;
-```
-
-### 로깅
-
-```javascript
-const logger = require("../utils/logger");
-logger.info("정보 메시지");
-logger.error("에러 메시지");
-```
+ISC
 
 ---
 
