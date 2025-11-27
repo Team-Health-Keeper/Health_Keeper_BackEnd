@@ -188,7 +188,7 @@ const kakaoCallback = async (req, res) => {
     // 4. React 프론트엔드로 리다이렉트 (토큰 포함)
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     res.redirect(
-      `${frontendUrl}/auth/callback?token=${result.token}&success=true`
+      `${frontendUrl}/auth/callback?token=${result.token}&success=true&email=${email}&name=${name}`
     );
   } catch (error) {
     console.error("카카오 로그인 오류:", error.response?.data || error.message);
