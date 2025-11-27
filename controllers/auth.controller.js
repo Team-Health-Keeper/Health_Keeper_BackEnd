@@ -186,13 +186,13 @@ const kakaoCallback = async (req, res) => {
     const result = await authenticateUser("kakao", providerId, email, name);
 
     // 4. React 프론트엔드로 리다이렉트 (토큰 포함)
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     res.redirect(
       `${frontendUrl}/auth/callback?token=${result.token}&success=true`
     );
   } catch (error) {
     console.error("카카오 로그인 오류:", error.response?.data || error.message);
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     res.redirect(
       `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
         error.message

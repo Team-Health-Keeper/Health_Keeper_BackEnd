@@ -256,11 +256,11 @@ GET http://localhost:3001/api/auth/kakao/callback?code=AUTHORIZATION_CODE
 
 - 성공: 프론트엔드로 리다이렉트
   ```
-  http://localhost:3000/auth/callback?token=JWT_TOKEN&success=true
+  http://localhost:5173/auth/callback?token=JWT_TOKEN&success=true
   ```
 - 실패: 에러와 함께 리다이렉트
   ```
-  http://localhost:3000/auth/callback?success=false&error=ERROR_MESSAGE
+  http://localhost:5173/auth/callback?success=false&error=ERROR_MESSAGE
   ```
 
 ---
@@ -388,13 +388,13 @@ Headers:
 
 **응답 파라미터:**
 
-| 파라미터                | 타입   | 설명                 |
-| ----------------------- | ------ | -------------------- |
-| `success`               | boolean| 성공 여부            |
-| `data`                  | array  | 측정 코드 목록       |
-| `data[].id`             | number | 측정 코드 ID         |
-| `data[].measurement_code_name` | string | 측정운동명           |
-| `data[].guide_video`    | string | 가이드 비디오 URL    |
+| 파라미터                       | 타입    | 설명              |
+| ------------------------------ | ------- | ----------------- |
+| `success`                      | boolean | 성공 여부         |
+| `data`                         | array   | 측정 코드 목록    |
+| `data[].id`                    | number  | 측정 코드 ID      |
+| `data[].measurement_code_name` | string  | 측정운동명        |
+| `data[].guide_video`           | string  | 가이드 비디오 URL |
 
 **cURL 예제:**
 
@@ -743,7 +743,7 @@ KAKAO_CLIENT_SECRET=your_kakao_client_secret
 KAKAO_REDIRECT_URI=http://localhost:3001/api/auth/kakao/callback
 
 # Frontend URL (React)
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:5173
 
 # AI Server Configuration
 AI_SERVER_URL=http://localhost:8000
