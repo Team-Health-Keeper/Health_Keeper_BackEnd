@@ -57,14 +57,18 @@ const authenticateUser = async (provider, providerId, email, name) => {
         "INSERT INTO grass_history (user_id, attendance, video_watch, measurement, record_date) VALUES (?, ?, ?, ?, ?)",
         [user.id, "Y", "N", "N", today]
       );
-      console.log(`[grass_history] 로그인 기록 추가: user_id=${user.id}, date=${today}`);
+      console.log(
+        `[grass_history] 로그인 기록 추가: user_id=${user.id}, date=${today}`
+      );
     } else {
       // 이미 기록이 있으면 출석만 업데이트 (이미 'Y'일 수도 있음)
       await pool.execute(
         "UPDATE grass_history SET attendance = ? WHERE user_id = ? AND record_date = ?",
         ["Y", user.id, today]
       );
-      console.log(`[grass_history] 로그인 출석 업데이트: user_id=${user.id}, date=${today}`);
+      console.log(
+        `[grass_history] 로그인 출석 업데이트: user_id=${user.id}, date=${today}`
+      );
     }
   } catch (error) {
     // grass_history 삽입 실패해도 로그인은 계속 진행
@@ -333,11 +337,32 @@ const authenticate = async (req, res) => {
 };
 
 // 로그아웃 (클라이언트에서 토큰 삭제)
-const logout = (req, res) => {
-  res.json({
-    success: true,
-    message: "로그아웃되었습니다",
-  });
+// JWT는 stateless이므로 서버에서 토큰을 무효화할 수 없지만,
+// 로그아웃 요청을 받아서 로그를 남기고 성공 응답을 반환합니다.
+// 실제 토큰 삭제는 클라이언트에서 처리합니다.
+// 인증이 실패해도 로그아웃은 성공으로 처리합니다.
+const logout = async (req, res) => {
+  try {
+    // 인증된 사용자 정보가 있으면 로그에 기록 (없어도 정상)
+    const userId = req.user?.id;
+    if (userId) {
+      console.log(`[logout] 사용자 로그아웃: user_id=${userId}`);
+    } else {
+      console.log(`[logout] 로그아웃 요청 (인증 정보 없음)`);
+    }
+
+    res.json({
+      success: true,
+      message: "로그아웃되었습니다",
+    });
+  } catch (error) {
+    console.error("로그아웃 오류:", error);
+    // 로그아웃은 항상 성공으로 처리 (클라이언트에서 토큰 삭제)
+    res.json({
+      success: true,
+      message: "로그아웃되었습니다",
+    });
+  }
 };
 
 module.exports = {
