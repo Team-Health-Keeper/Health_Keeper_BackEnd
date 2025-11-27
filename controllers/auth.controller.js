@@ -336,6 +336,411 @@ const authenticate = async (req, res) => {
   }
 };
 
+// 네이버 콜백 처리
+const naverCallback = async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+
+    console.log("[네이버 콜백] 요청 받음:", {
+      code: code ? "있음" : "없음",
+      state: state || "없음",
+      error: error || "없음",
+      query: req.query,
+    });
+
+    if (error) {
+      console.error("[네이버 콜백] 에러:", error);
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      return res.redirect(
+        `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+          "네이버 로그인 취소 또는 오류 발생"
+        )}`
+      );
+    }
+
+    if (!code) {
+      console.error("[네이버 콜백] 인증 코드 없음");
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      return res.redirect(
+        `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+          "인증 코드가 없습니다"
+        )}`
+      );
+    }
+
+    // 환경 변수 검증
+    if (!process.env.NAVER_CLIENT_ID) {
+      console.error("[네이버 콜백] NAVER_CLIENT_ID가 설정되지 않았습니다");
+      throw new Error("네이버 Client ID가 설정되지 않았습니다");
+    }
+
+    if (!process.env.NAVER_CLIENT_SECRET) {
+      console.error("[네이버 콜백] NAVER_CLIENT_SECRET이 설정되지 않았습니다");
+      throw new Error("네이버 Client Secret이 설정되지 않았습니다");
+    }
+
+    // redirect_uri는 프론트엔드에서 사용한 것과 정확히 일치해야 함
+    const redirectUri =
+      process.env.NAVER_REDIRECT_URI ||
+      process.env.BACKEND_URL + "/api/auth/naver/callback" ||
+      "http://localhost:3001/api/auth/naver/callback";
+
+    console.log("[네이버 콜백] 토큰 교환 시작:", {
+      redirectUri: redirectUri,
+      clientId: process.env.NAVER_CLIENT_ID,
+      clientSecret: process.env.NAVER_CLIENT_SECRET
+        ? `${process.env.NAVER_CLIENT_SECRET.substring(0, 4)}...`
+        : "없음",
+      hasClientId: !!process.env.NAVER_CLIENT_ID,
+      hasClientSecret: !!process.env.NAVER_CLIENT_SECRET,
+      code: code ? "있음" : "없음",
+      state: state || "없음",
+    });
+
+    // 1. 네이버 액세스 토큰 발급
+    // 네이버 API는 application/x-www-form-urlencoded 형식의 body를 요구함
+    const querystring = require("querystring");
+    const tokenRequestData = querystring.stringify({
+      grant_type: "authorization_code",
+      client_id: process.env.NAVER_CLIENT_ID,
+      client_secret: process.env.NAVER_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      code: code,
+      state: state,
+    });
+
+    console.log("[네이버 콜백] 토큰 요청 데이터:", {
+      grant_type: "authorization_code",
+      client_id: process.env.NAVER_CLIENT_ID ? "설정됨" : "없음",
+      client_secret: process.env.NAVER_CLIENT_SECRET ? "설정됨" : "없음",
+      redirect_uri: redirectUri,
+      code: code ? "있음" : "없음",
+      state: state || "없음",
+    });
+
+    let tokenResponse;
+    try {
+      tokenResponse = await axios.post(
+        "https://nid.naver.com/oauth2.0/token",
+        tokenRequestData,
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+          },
+        }
+      );
+    } catch (tokenError) {
+      console.error("[네이버 콜백] 토큰 교환 실패:", {
+        status: tokenError.response?.status,
+        statusText: tokenError.response?.statusText,
+        data: tokenError.response?.data,
+        message: tokenError.message,
+      });
+      throw new Error(
+        tokenError.response?.data?.error_description ||
+          tokenError.response?.data?.error ||
+          `네이버 토큰 교환 실패: ${tokenError.message}`
+      );
+    }
+
+    console.log("[네이버 콜백] 토큰 응답:", {
+      status: tokenResponse.status,
+      data: tokenResponse.data,
+      hasAccessToken: !!tokenResponse.data.access_token,
+      responseKeys: Object.keys(tokenResponse.data),
+    });
+
+    // 네이버 API는 에러를 200 응답으로 반환할 수 있음
+    if (tokenResponse.data.error) {
+      console.error("[네이버 콜백] 토큰 응답 에러:", tokenResponse.data);
+      throw new Error(
+        tokenResponse.data.error_description ||
+          tokenResponse.data.error ||
+          "네이버 토큰 교환 실패"
+      );
+    }
+
+    const { access_token } = tokenResponse.data;
+
+    if (!access_token) {
+      console.error("[네이버 콜백] 액세스 토큰 없음:", tokenResponse.data);
+      throw new Error(
+        `액세스 토큰을 받지 못했습니다. 응답: ${JSON.stringify(
+          tokenResponse.data
+        )}`
+      );
+    }
+
+    // 2. 네이버 사용자 정보 가져오기
+    console.log("[네이버 콜백] 사용자 정보 조회 시작");
+    const userInfoResponse = await axios.get(
+      "https://openapi.naver.com/v1/nid/me",
+      {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+        },
+      }
+    );
+
+    console.log("[네이버 콜백] 사용자 정보 응답:", {
+      hasResponse: !!userInfoResponse.data.response,
+      responseData: userInfoResponse.data,
+    });
+
+    const naverUser = userInfoResponse.data.response;
+
+    if (!naverUser) {
+      throw new Error("네이버 사용자 정보를 받지 못했습니다");
+    }
+
+    const providerId = naverUser.id;
+
+    if (!providerId) {
+      throw new Error("네이버 사용자 ID를 받지 못했습니다");
+    }
+
+    // 네이버 사용자 정보 추출
+    const email = naverUser.email || null;
+    const name =
+      naverUser.name ||
+      naverUser.nickname ||
+      `네이버사용자${providerId.slice(-4)}`;
+
+    console.log("네이버 사용자 정보:", {
+      email: email || "이메일 없음",
+      name: name,
+      providerId,
+    });
+
+    // 3. 공통 authenticateUser 함수 사용
+    console.log("[네이버 콜백] 사용자 인증 시작:", {
+      providerId,
+      email: email || "없음",
+      name,
+    });
+
+    const result = await authenticateUser("naver", providerId, email, name);
+
+    console.log("[네이버 콜백] 사용자 인증 완료:", {
+      hasToken: !!result.token,
+      email: result.email || "없음",
+      name: result.name || "없음",
+    });
+
+    // 4. 프론트엔드로 리다이렉트 (토큰 포함)
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const redirectUrl = `${frontendUrl}/auth/callback?token=${
+      result.token
+    }&success=true&email=${encodeURIComponent(
+      email || ""
+    )}&name=${encodeURIComponent(name)}`;
+
+    console.log("[네이버 콜백] 프론트엔드로 리다이렉트:", redirectUrl);
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error("[네이버 콜백] 오류 상세:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      stack: error.stack,
+    });
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const errorMessage =
+      error.response?.data?.error_description ||
+      error.response?.data?.error ||
+      error.message ||
+      "네이버 로그인 중 오류가 발생했습니다";
+    res.redirect(
+      `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+        errorMessage
+      )}`
+    );
+  }
+};
+
+// 구글 콜백 처리
+const googleCallback = async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+
+    console.log("[구글 콜백] 요청 받음:", {
+      code: code ? "있음" : "없음",
+      state: state || "없음",
+      error: error || "없음",
+      query: req.query,
+    });
+
+    if (error) {
+      console.error("[구글 콜백] 에러:", error);
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      return res.redirect(
+        `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+          "구글 로그인 취소 또는 오류 발생"
+        )}`
+      );
+    }
+
+    if (!code) {
+      console.error("[구글 콜백] 인증 코드 없음");
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      return res.redirect(
+        `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+          "인증 코드가 없습니다"
+        )}`
+      );
+    }
+
+    // 환경 변수 검증
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      console.error("[구글 콜백] GOOGLE_CLIENT_ID가 설정되지 않았습니다");
+      throw new Error("구글 Client ID가 설정되지 않았습니다");
+    }
+
+    if (!process.env.GOOGLE_CLIENT_SECRET) {
+      console.error("[구글 콜백] GOOGLE_CLIENT_SECRET이 설정되지 않았습니다");
+      throw new Error("구글 Client Secret이 설정되지 않았습니다");
+    }
+
+    // 1. 구글 액세스 토큰 발급
+    // redirect_uri는 프론트엔드에서 사용한 것과 정확히 일치해야 함
+    const redirectUri =
+      process.env.GOOGLE_REDIRECT_URI ||
+      process.env.BACKEND_URL + "/api/auth/google/callback" ||
+      "http://localhost:3001/api/auth/google/callback";
+
+    console.log("[구글 콜백] 토큰 교환 시작:", {
+      redirectUri: redirectUri,
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET
+        ? `${process.env.GOOGLE_CLIENT_SECRET.substring(0, 4)}...`
+        : "없음",
+      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      code: code ? "있음" : "없음",
+      state: state || "없음",
+    });
+
+    // 구글 API는 URL 인코딩된 폼 데이터를 body로 보내야 함
+    const querystring = require("querystring");
+    const tokenRequestData = querystring.stringify({
+      grant_type: "authorization_code",
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      code: code,
+    });
+
+    console.log("[구글 콜백] 토큰 요청 데이터:", {
+      grant_type: "authorization_code",
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET
+        ? `${process.env.GOOGLE_CLIENT_SECRET.substring(0, 4)}...`
+        : "없음",
+      redirect_uri: redirectUri,
+      code: code ? "있음" : "없음",
+    });
+
+    let tokenResponse;
+    try {
+      tokenResponse = await axios.post(
+        "https://oauth2.googleapis.com/token",
+        tokenRequestData,
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        }
+      );
+    } catch (tokenError) {
+      console.error("[구글 콜백] 토큰 교환 실패:", {
+        status: tokenError.response?.status,
+        statusText: tokenError.response?.statusText,
+        data: tokenError.response?.data,
+        message: tokenError.message,
+      });
+      throw new Error(
+        tokenError.response?.data?.error_description ||
+          tokenError.response?.data?.error ||
+          `구글 토큰 교환 실패: ${tokenError.message}`
+      );
+    }
+
+    console.log("[구글 콜백] 토큰 응답:", {
+      status: tokenResponse.status,
+      hasAccessToken: !!tokenResponse.data.access_token,
+      responseKeys: Object.keys(tokenResponse.data),
+    });
+
+    // 구글 API는 에러를 200 응답으로 반환할 수 있음
+    if (tokenResponse.data.error) {
+      console.error("[구글 콜백] 토큰 응답 에러:", tokenResponse.data);
+      throw new Error(
+        tokenResponse.data.error_description ||
+          tokenResponse.data.error ||
+          "구글 토큰 교환 실패"
+      );
+    }
+
+    const { access_token } = tokenResponse.data;
+
+    if (!access_token) {
+      console.error("[구글 콜백] 액세스 토큰 없음:", tokenResponse.data);
+      throw new Error(
+        `액세스 토큰을 받지 못했습니다. 응답: ${JSON.stringify(
+          tokenResponse.data
+        )}`
+      );
+    }
+
+    // 2. 구글 사용자 정보 가져오기
+    const userInfoResponse = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+        },
+      }
+    );
+
+    const googleUser = userInfoResponse.data;
+    const providerId = googleUser.id;
+
+    // 구글 사용자 정보 추출
+    const email = googleUser.email || null;
+    const name =
+      googleUser.name ||
+      googleUser.given_name ||
+      `구글사용자${providerId.slice(-4)}`;
+
+    console.log("구글 사용자 정보:", {
+      email: email || "이메일 없음",
+      name: name,
+      providerId,
+    });
+
+    // 3. 공통 authenticateUser 함수 사용
+    const result = await authenticateUser("google", providerId, email, name);
+
+    // 4. 프론트엔드로 리다이렉트 (토큰 포함)
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    res.redirect(
+      `${frontendUrl}/auth/callback?token=${
+        result.token
+      }&success=true&email=${encodeURIComponent(
+        email || ""
+      )}&name=${encodeURIComponent(name)}`
+    );
+  } catch (error) {
+    console.error("구글 로그인 오류:", error.response?.data || error.message);
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    res.redirect(
+      `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
+        error.message || "구글 로그인 중 오류가 발생했습니다"
+      )}`
+    );
+  }
+};
+
 // 로그아웃 (클라이언트에서 토큰 삭제)
 // JWT는 stateless이므로 서버에서 토큰을 무효화할 수 없지만,
 // 로그아웃 요청을 받아서 로그를 남기고 성공 응답을 반환합니다.
@@ -368,6 +773,8 @@ const logout = async (req, res) => {
 module.exports = {
   getKakaoAuthUrl,
   kakaoCallback,
+  naverCallback,
+  googleCallback,
   authenticate,
   getMe,
   logout,
