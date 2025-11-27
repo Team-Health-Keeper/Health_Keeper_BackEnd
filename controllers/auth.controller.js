@@ -42,7 +42,36 @@ const authenticateUser = async (provider, providerId, email, name) => {
     user = newUsers[0];
   }
 
-  // 2. JWT 토큰 생성
+  // 2. 오늘 날짜의 grass_history 기록 확인 및 삽입
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD 형식
+  try {
+    // 오늘 날짜에 대한 기록이 있는지 확인
+    const [existingRecords] = await pool.execute(
+      "SELECT * FROM grass_history WHERE user_id = ? AND record_date = ?",
+      [user.id, today]
+    );
+
+    if (existingRecords.length === 0) {
+      // 오늘 날짜에 기록이 없으면 새로 삽입 (로그인 = 출석)
+      await pool.execute(
+        "INSERT INTO grass_history (user_id, attendance, video_watch, measurement, record_date) VALUES (?, ?, ?, ?, ?)",
+        [user.id, "Y", "N", "N", today]
+      );
+      console.log(`[grass_history] 로그인 기록 추가: user_id=${user.id}, date=${today}`);
+    } else {
+      // 이미 기록이 있으면 출석만 업데이트 (이미 'Y'일 수도 있음)
+      await pool.execute(
+        "UPDATE grass_history SET attendance = ? WHERE user_id = ? AND record_date = ?",
+        ["Y", user.id, today]
+      );
+      console.log(`[grass_history] 로그인 출석 업데이트: user_id=${user.id}, date=${today}`);
+    }
+  } catch (error) {
+    // grass_history 삽입 실패해도 로그인은 계속 진행
+    console.error("[grass_history] 기록 삽입 오류:", error);
+  }
+
+  // 3. JWT 토큰 생성
   const token = jwt.sign(
     {
       id: user.id,
@@ -55,7 +84,7 @@ const authenticateUser = async (provider, providerId, email, name) => {
     }
   );
 
-  // 3. 반환값 구성
+  // 4. 반환값 구성
   return {
     token,
     email: user.email,
