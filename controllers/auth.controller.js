@@ -14,20 +14,28 @@ const getKakaoAuthUrl = (req, res) => {
     });
   }
 
-  // 프론트엔드 URL을 기본값으로 사용 (카카오는 프론트엔드로 리다이렉트)
+  // 백엔드로 리다이렉트 (백엔드가 처리 후 프론트엔드로 리다이렉트)
   const REDIRECT_URI =
     process.env.KAKAO_REDIRECT_URI ||
-    process.env.FRONTEND_URL + "/auth/callback" ||
-    "http://localhost:3000/auth/callback";
+    process.env.BACKEND_URL + "/api/auth/kakao/callback" ||
+    "http://localhost:3001/api/auth/kakao/callback";
 
   // 리다이렉트 URI 인코딩 (정확한 일치 필요)
   const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
-  // scope 제거 - 기본 권한만 사용
-  const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodedRedirectUri}&response_type=code`;
+
+  // 필요한 scope 설정 (닉네임과 이메일만)
+  const scope = "profile_nickname account_email";
+  const encodedScope = encodeURIComponent(scope);
+
+  const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${encodedScope}`;
 
   console.log("카카오 인증 URL 생성:", {
     clientId: KAKAO_CLIENT_ID ? "설정됨" : "없음",
     redirectUri: REDIRECT_URI,
+    encodedRedirectUri: encodedRedirectUri,
+    scope: scope,
+    encodedScope: encodedScope,
+    fullUrl: kakaoAuthUrl,
   });
 
   res.json({
@@ -66,8 +74,8 @@ const kakaoCallback = async (req, res) => {
           client_secret: process.env.KAKAO_CLIENT_SECRET,
           redirect_uri:
             process.env.KAKAO_REDIRECT_URI ||
-            process.env.FRONTEND_URL + "/auth/callback" ||
-            "http://localhost:3000/auth/callback",
+            process.env.BACKEND_URL + "/api/auth/kakao/callback" ||
+            "http://localhost:3001/api/auth/kakao/callback",
           code: code,
         },
         headers: {
@@ -92,31 +100,24 @@ const kakaoCallback = async (req, res) => {
     const providerId = kakaoUser.id.toString();
 
     // 카카오 사용자 정보 추출
-    // 이메일: OpenID Connect 활성화 시 받을 수 있음
-    const email =
-      kakaoUser.kakao_account?.email ||
-      kakaoUser.kakao_account?.email_needs_agreement
-        ? null
-        : null;
+    // 이메일: account_email scope 필요
+    const email = kakaoUser.kakao_account?.email || null;
 
-    // 이름: 실명 우선, 없으면 닉네임 사용
-    const realName = kakaoUser.kakao_account?.name || null; // 실명
+    // 닉네임: profile_nickname scope 필요
     const nickname =
       kakaoUser.kakao_account?.profile?.nickname ||
       kakaoUser.properties?.nickname ||
-      null; // 닉네임
+      null;
 
-    // 실명이 있으면 실명 사용, 없으면 닉네임 사용
-    const name = realName || nickname || `카카오사용자${providerId.slice(-4)}`;
+    // 닉네임 사용 (실명 불필요)
+    const name = nickname || `카카오사용자${providerId.slice(-4)}`;
 
     console.log("카카오 사용자 정보:", {
-      email: email || "이메일 없음 (OpenID Connect 활성화 필요)",
-      realName: realName || "실명 없음",
-      nickname: nickname || "닉네임 없음",
-      name: name, // 최종 사용할 이름 (실명 우선)
+      email: email || "이메일 없음 (account_email scope 필요)",
+      nickname: nickname || "닉네임 없음 (profile_nickname scope 필요)",
+      name: name, // 최종 사용할 이름 (닉네임)
       providerId,
       hasEmail: !!email,
-      hasRealName: !!realName,
       hasNickname: !!nickname,
     });
 

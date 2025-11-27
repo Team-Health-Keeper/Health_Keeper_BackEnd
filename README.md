@@ -553,7 +553,7 @@ NODE_ENV=development
 # MySQL Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
-DB_NAME=contest
+DB_NAME=health_keeper
 DB_USER=root
 DB_PASSWORD=your_password
 
