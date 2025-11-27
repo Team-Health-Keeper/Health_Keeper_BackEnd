@@ -268,9 +268,32 @@ const getRecipe = async (req, res) => {
   }
 };
 
+// 측정정보코드조회 (모든 측정 코드 목록)
+const getMeasurementCodes = async (req, res) => {
+  try {
+    const [codes] = await pool.execute(
+      `SELECT id, measurement_code_name, guide_video 
+       FROM measurement_code 
+       ORDER BY measurement_code_name ASC`
+    );
+
+    res.json({
+      success: true,
+      data: codes,
+    });
+  } catch (error) {
+    console.error("측정정보코드조회 오류:", error);
+    res.status(500).json({
+      success: false,
+      message: "측정정보코드조회 중 오류가 발생했습니다.",
+    });
+  }
+};
+
 module.exports = {
   createMeasurement,
   getMeasurements,
   getMeasurementById,
   getRecipe,
+  getMeasurementCodes,
 };

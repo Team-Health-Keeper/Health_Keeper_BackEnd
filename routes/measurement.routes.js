@@ -4,6 +4,13 @@ const measurementController = require("../controllers/measurement.controller");
 const authenticate = require("../middleware/auth");
 const { ageGroups, getAgeGroup } = require("../utils/ageGroups");
 
+// 측정정보코드조회 (모든 측정 코드 목록)
+router.get(
+  "/measurement-codes",
+  authenticate,
+  measurementController.getMeasurementCodes
+);
+
 // 연령대별 측정 항목 목록 조회
 router.get("/items", authenticate, (req, res) => {
   const { age, ageGroup } = req.query;

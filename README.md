@@ -348,7 +348,85 @@ POST http://localhost:3001/api/auth/logout
 
 ## 3. 체력 측정 및 운동 레시피
 
-### 3.1 체력 측정 및 레시피 생성
+### 3.1 측정정보코드조회
+
+모든 측정 코드 목록을 조회합니다. 측정운동명(measurement_code_name) 기준으로 정렬됩니다.
+
+**요청 헤더:**
+
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**요청:**
+
+```bash
+GET http://localhost:3001/api/measurement/measurement-codes
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "measurement_code_name": "신장",
+      "guide_video": "https://example.com/video1.mp4"
+    },
+    {
+      "id": 2,
+      "measurement_code_name": "체중",
+      "guide_video": "https://example.com/video2.mp4"
+    }
+  ]
+}
+```
+
+**응답 파라미터:**
+
+| 파라미터                | 타입   | 설명                 |
+| ----------------------- | ------ | -------------------- |
+| `success`               | boolean| 성공 여부            |
+| `data`                  | array  | 측정 코드 목록       |
+| `data[].id`             | number | 측정 코드 ID         |
+| `data[].measurement_code_name` | string | 측정운동명           |
+| `data[].guide_video`    | string | 가이드 비디오 URL    |
+
+**cURL 예제:**
+
+```bash
+curl -X GET http://localhost:3001/api/measurement/measurement-codes \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+**JavaScript 예제:**
+
+```javascript
+const response = await fetch(
+  "http://localhost:3001/api/measurement/measurement-codes",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
+const data = await response.json();
+console.log(data.data); // 측정 코드 목록
+```
+
+**정렬:**
+
+- `measurement_code_name` 기준 오름차순 정렬
+
+---
+
+### 3.2 체력 측정 및 레시피 생성
 
 ### POST `/api/measurement`
 
@@ -474,7 +552,7 @@ const data = await response.json();
 
 ---
 
-### 3.2 측정 기록 조회
+### 3.3 측정 기록 조회
 
 ### GET `/api/measurement`
 
@@ -520,7 +598,7 @@ Headers:
 
 ---
 
-### 3.3 특정 측정 기록 조회
+### 3.4 특정 측정 기록 조회
 
 ### GET `/api/measurement/:id`
 
@@ -563,7 +641,7 @@ Headers:
 
 ---
 
-### 3.4 레시피 조회
+### 3.5 레시피 조회
 
 ### GET `/api/measurement/:id/recipe`
 
