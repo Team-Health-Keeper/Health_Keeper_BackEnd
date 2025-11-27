@@ -111,7 +111,105 @@ GET http://localhost:3001/api/health
 
 ## 2. 인증 (Authentication)
 
-### 2.1 카카오 로그인 URL 가져오기
+### 2.1 인증 (로그인/회원가입)
+
+프론트엔드에서 소셜 로그인 정보를 전송하여 사용자를 인증하고 JWT 토큰을 발급받습니다. 기존 사용자는 자동으로 로그인되고, 새 사용자는 자동으로 회원가입됩니다.
+
+**요청:**
+
+```bash
+POST http://localhost:3001/api/auth/authenticate
+Content-Type: application/json
+
+{
+  "provider": "kakao",
+  "provider_id": "123456789",
+  "email": "user@example.com",
+  "name": "홍길동"
+}
+```
+
+**요청 파라미터:**
+
+| 파라미터      | 타입   | 필수 | 설명                                     |
+| ------------- | ------ | ---- | ---------------------------------------- |
+| `provider`    | string | ✅   | 로그인 유형 (`kakao`, `google`, `naver`) |
+| `provider_id` | string | ✅   | 소셜 로그인 고유 아이디                  |
+| `email`       | string | ❌   | 이메일 (옵션, 공백 가능)                 |
+| `name`        | string | ❌   | 성명 또는 닉네임 (없으면 닉네임도 가능)  |
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "email": "user@example.com",
+  "name": "홍길동"
+}
+```
+
+**응답 파라미터:**
+
+| 파라미터  | 타입    | 설명      |
+| --------- | ------- | --------- |
+| `success` | boolean | 성공 여부 |
+| `token`   | string  | JWT 토큰  |
+| `email`   | string  | 이메일    |
+| `name`    | string  | 성명      |
+
+**에러 응답:**
+
+```json
+{
+  "success": false,
+  "message": "provider와 provider_id는 필수입니다"
+}
+```
+
+**cURL 예제:**
+
+```bash
+curl -X POST http://localhost:3001/api/auth/authenticate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "kakao",
+    "provider_id": "123456789",
+    "email": "user@example.com",
+    "name": "홍길동"
+  }'
+```
+
+**JavaScript 예제:**
+
+```javascript
+const response = await fetch("http://localhost:3001/api/auth/authenticate", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    provider: "kakao",
+    provider_id: "123456789",
+    email: "user@example.com",
+    name: "홍길동",
+  }),
+});
+
+const data = await response.json();
+console.log(data.token); // JWT 토큰
+```
+
+**동작 방식:**
+
+1. `provider` + `provider_id` 조합으로 기존 사용자 확인
+2. 기존 사용자가 있으면 → 로그인 처리 (토큰 발급)
+3. 기존 사용자가 없으면 → 회원가입 처리 (생성 후 토큰 발급)
+4. JWT 토큰 생성 및 반환
+
+---
+
+### 2.2 카카오 로그인 URL 가져오기
 
 ### GET `/api/auth/kakao`
 

@@ -2,6 +2,67 @@ const axios = require("axios");
 const pool = require("../config/database");
 const jwt = require("jsonwebtoken");
 
+// 공통 인증 처리 함수 (로그인/회원가입 자동 처리)
+// provider, provider_id로 기존 사용자 확인 후 없으면 생성, 있으면 반환
+// JWT 토큰 생성 및 반환
+const authenticateUser = async (provider, providerId, email, name) => {
+  // 1. 기존 사용자 확인
+  const [existingUsers] = await pool.execute(
+    "SELECT * FROM users WHERE provider = ? AND provider_id = ?",
+    [provider, providerId]
+  );
+
+  let user;
+  if (existingUsers.length > 0) {
+    // 기존 사용자
+    user = existingUsers[0];
+    // 이메일이나 이름이 업데이트되었을 수 있으므로 업데이트
+    if (email !== user.email || name !== user.name) {
+      await pool.execute("UPDATE users SET email = ?, name = ? WHERE id = ?", [
+        email || user.email,
+        name || user.name,
+        user.id,
+      ]);
+      // 업데이트된 사용자 정보 다시 조회
+      const [updatedUsers] = await pool.execute(
+        "SELECT * FROM users WHERE id = ?",
+        [user.id]
+      );
+      user = updatedUsers[0];
+    }
+  } else {
+    // 새 사용자 생성
+    const [result] = await pool.execute(
+      "INSERT INTO users (provider, provider_id, email, name) VALUES (?, ?, ?, ?)",
+      [provider, providerId, email, name]
+    );
+    const [newUsers] = await pool.execute("SELECT * FROM users WHERE id = ?", [
+      result.insertId,
+    ]);
+    user = newUsers[0];
+  }
+
+  // 2. JWT 토큰 생성
+  const token = jwt.sign(
+    {
+      id: user.id,
+      provider: user.provider,
+      provider_id: user.provider_id,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    }
+  );
+
+  // 3. 반환값 구성
+  return {
+    token,
+    email: user.email,
+    name: user.name,
+  };
+};
+
 // 카카오 인증 URL 생성
 const getKakaoAuthUrl = (req, res) => {
   const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID;
@@ -121,45 +182,14 @@ const kakaoCallback = async (req, res) => {
       hasNickname: !!nickname,
     });
 
-    // 3. DB에서 사용자 조회 또는 생성
-    let user;
-    const [existingUsers] = await pool.execute(
-      "SELECT * FROM users WHERE provider = ? AND provider_id = ?",
-      ["kakao", providerId]
-    );
+    // 3. 공통 authenticateUser 함수 사용
+    const result = await authenticateUser("kakao", providerId, email, name);
 
-    if (existingUsers.length > 0) {
-      // 기존 사용자
-      user = existingUsers[0];
-    } else {
-      // 새 사용자 생성
-      const [result] = await pool.execute(
-        "INSERT INTO users (provider, provider_id, email, name) VALUES (?, ?, ?, ?)",
-        ["kakao", providerId, email, name]
-      );
-      const [newUsers] = await pool.execute(
-        "SELECT * FROM users WHERE id = ?",
-        [result.insertId]
-      );
-      user = newUsers[0];
-    }
-
-    // 4. JWT 토큰 발급
-    const token = jwt.sign(
-      {
-        id: user.id,
-        provider: user.provider,
-        provider_id: user.provider_id,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || "7d",
-      }
-    );
-
-    // 5. React 프론트엔드로 리다이렉트 (토큰 포함)
+    // 4. React 프론트엔드로 리다이렉트 (토큰 포함)
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    res.redirect(`${frontendUrl}/auth/callback?token=${token}&success=true`);
+    res.redirect(
+      `${frontendUrl}/auth/callback?token=${result.token}&success=true`
+    );
   } catch (error) {
     console.error("카카오 로그인 오류:", error.response?.data || error.message);
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -225,6 +255,54 @@ const getMe = async (req, res) => {
   }
 };
 
+// 인증 API (로그인/회원가입 자동 처리)
+const authenticate = async (req, res) => {
+  try {
+    const { provider, provider_id, email, name } = req.body;
+
+    // 입력값 검증
+    if (!provider || !provider_id) {
+      return res.status(400).json({
+        success: false,
+        message: "provider와 provider_id는 필수입니다",
+      });
+    }
+
+    // provider 유효성 검증
+    const validProviders = ["kakao", "google", "naver"];
+    if (!validProviders.includes(provider)) {
+      return res.status(400).json({
+        success: false,
+        message: `지원하지 않는 provider입니다. 지원: ${validProviders.join(
+          ", "
+        )}`,
+      });
+    }
+
+    // 공통 authenticateUser 함수 사용
+    const result = await authenticateUser(
+      provider,
+      provider_id,
+      email || null,
+      name
+    );
+
+    res.json({
+      success: true,
+      token: result.token,
+      email: result.email,
+      name: result.name,
+    });
+  } catch (error) {
+    console.error("인증 오류:", error);
+    res.status(500).json({
+      success: false,
+      message: "인증 중 오류가 발생했습니다",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 // 로그아웃 (클라이언트에서 토큰 삭제)
 const logout = (req, res) => {
   res.json({
@@ -236,6 +314,7 @@ const logout = (req, res) => {
 module.exports = {
   getKakaoAuthUrl,
   kakaoCallback,
+  authenticate,
   getMe,
   logout,
 };
