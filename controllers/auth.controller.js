@@ -368,17 +368,6 @@ const naverCallback = async (req, res) => {
       );
     }
 
-    // 환경 변수 검증
-    if (!process.env.NAVER_CLIENT_ID) {
-      console.error("[네이버 콜백] NAVER_CLIENT_ID가 설정되지 않았습니다");
-      throw new Error("네이버 Client ID가 설정되지 않았습니다");
-    }
-
-    if (!process.env.NAVER_CLIENT_SECRET) {
-      console.error("[네이버 콜백] NAVER_CLIENT_SECRET이 설정되지 않았습니다");
-      throw new Error("네이버 Client Secret이 설정되지 않았습니다");
-    }
-
     // redirect_uri는 프론트엔드에서 사용한 것과 정확히 일치해야 함
     const redirectUri =
       process.env.NAVER_REDIRECT_URI ||
@@ -387,12 +376,8 @@ const naverCallback = async (req, res) => {
 
     console.log("[네이버 콜백] 토큰 교환 시작:", {
       redirectUri: redirectUri,
-      clientId: process.env.NAVER_CLIENT_ID,
-      clientSecret: process.env.NAVER_CLIENT_SECRET
-        ? `${process.env.NAVER_CLIENT_SECRET.substring(0, 4)}...`
-        : "없음",
-      hasClientId: !!process.env.NAVER_CLIENT_ID,
-      hasClientSecret: !!process.env.NAVER_CLIENT_SECRET,
+      clientId: process.env.NAVER_CLIENT_ID ? "설정됨" : "없음",
+      clientSecret: process.env.NAVER_CLIENT_SECRET ? "설정됨" : "없음",
       code: code ? "있음" : "없음",
       state: state || "없음",
     });
@@ -563,15 +548,7 @@ const googleCallback = async (req, res) => {
   try {
     const { code, state, error } = req.query;
 
-    console.log("[구글 콜백] 요청 받음:", {
-      code: code ? "있음" : "없음",
-      state: state || "없음",
-      error: error || "없음",
-      query: req.query,
-    });
-
     if (error) {
-      console.error("[구글 콜백] 에러:", error);
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
       return res.redirect(
         `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
@@ -581,24 +558,12 @@ const googleCallback = async (req, res) => {
     }
 
     if (!code) {
-      console.error("[구글 콜백] 인증 코드 없음");
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
       return res.redirect(
         `${frontendUrl}/auth/callback?success=false&error=${encodeURIComponent(
           "인증 코드가 없습니다"
         )}`
       );
-    }
-
-    // 환경 변수 검증
-    if (!process.env.GOOGLE_CLIENT_ID) {
-      console.error("[구글 콜백] GOOGLE_CLIENT_ID가 설정되지 않았습니다");
-      throw new Error("구글 Client ID가 설정되지 않았습니다");
-    }
-
-    if (!process.env.GOOGLE_CLIENT_SECRET) {
-      console.error("[구글 콜백] GOOGLE_CLIENT_SECRET이 설정되지 않았습니다");
-      throw new Error("구글 Client Secret이 설정되지 않았습니다");
     }
 
     // 1. 구글 액세스 토큰 발급
@@ -608,89 +573,29 @@ const googleCallback = async (req, res) => {
       process.env.BACKEND_URL + "/api/auth/google/callback" ||
       "http://localhost:3001/api/auth/google/callback";
 
-    console.log("[구글 콜백] 토큰 교환 시작:", {
+    console.log("구글 토큰 교환:", {
       redirectUri: redirectUri,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET
-        ? `${process.env.GOOGLE_CLIENT_SECRET.substring(0, 4)}...`
-        : "없음",
-      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-      code: code ? "있음" : "없음",
-      state: state || "없음",
-    });
-
-    // 구글 API는 URL 인코딩된 폼 데이터를 body로 보내야 함
-    const querystring = require("querystring");
-    const tokenRequestData = querystring.stringify({
-      grant_type: "authorization_code",
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: redirectUri,
-      code: code,
-    });
-
-    console.log("[구글 콜백] 토큰 요청 데이터:", {
-      grant_type: "authorization_code",
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET
-        ? `${process.env.GOOGLE_CLIENT_SECRET.substring(0, 4)}...`
-        : "없음",
-      redirect_uri: redirectUri,
       code: code ? "있음" : "없음",
     });
 
-    let tokenResponse;
-    try {
-      tokenResponse = await axios.post(
-        "https://oauth2.googleapis.com/token",
-        tokenRequestData,
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-        }
-      );
-    } catch (tokenError) {
-      console.error("[구글 콜백] 토큰 교환 실패:", {
-        status: tokenError.response?.status,
-        statusText: tokenError.response?.statusText,
-        data: tokenError.response?.data,
-        message: tokenError.message,
-      });
-      throw new Error(
-        tokenError.response?.data?.error_description ||
-          tokenError.response?.data?.error ||
-          `구글 토큰 교환 실패: ${tokenError.message}`
-      );
-    }
-
-    console.log("[구글 콜백] 토큰 응답:", {
-      status: tokenResponse.status,
-      hasAccessToken: !!tokenResponse.data.access_token,
-      responseKeys: Object.keys(tokenResponse.data),
-    });
-
-    // 구글 API는 에러를 200 응답으로 반환할 수 있음
-    if (tokenResponse.data.error) {
-      console.error("[구글 콜백] 토큰 응답 에러:", tokenResponse.data);
-      throw new Error(
-        tokenResponse.data.error_description ||
-          tokenResponse.data.error ||
-          "구글 토큰 교환 실패"
-      );
-    }
+    const tokenResponse = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      null,
+      {
+        params: {
+          grant_type: "authorization_code",
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: redirectUri,
+          code: code,
+        },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
 
     const { access_token } = tokenResponse.data;
-
-    if (!access_token) {
-      console.error("[구글 콜백] 액세스 토큰 없음:", tokenResponse.data);
-      throw new Error(
-        `액세스 토큰을 받지 못했습니다. 응답: ${JSON.stringify(
-          tokenResponse.data
-        )}`
-      );
-    }
 
     // 2. 구글 사용자 정보 가져오기
     const userInfoResponse = await axios.get(
