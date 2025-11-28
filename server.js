@@ -29,6 +29,7 @@ app.use("/api/measurement", require("./routes/measurement.routes"));
 // Add more routes here as needed
 // app.use('/api/users', require('./routes/user.routes'));
 app.use("/api/clubs", require("./routes/clubs.routes"));
+app.use("/api/sports-facilities", require("./routes/sportsFacilities.routes"));
 
 // Root route
 app.get("/", (req, res) => {
