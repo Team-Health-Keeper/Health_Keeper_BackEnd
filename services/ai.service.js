@@ -277,16 +277,8 @@ const generateRecipeWithOpenAIOnly = async (measurementData) => {
 
   // AI 서버가 완성되기 전까지 임시 하드코딩된 운동 목록 (실제 card 테이블 데이터 사용)
   // TODO: AI 서버 완성 후 제거
-  const warmUpExercises = [
-    "흔들어 체조",
-    "거북이 스트레칭",
-    "조깅",
-  ];
-  const mainExercises = [
-    "동물처럼 걸어요",
-    "밴드를 당겨요",
-    "줄넘기",
-  ];
+  const warmUpExercises = ["흔들어 체조", "거북이 스트레칭", "조깅"];
+  const mainExercises = ["동물처럼 걸어요", "밴드를 당겨요", "줄넘기"];
   const coolDownExercises = [
     "흔들어 체조",
     "후굴자세 해봐요",

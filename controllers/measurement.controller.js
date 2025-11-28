@@ -187,10 +187,19 @@ const createMeasurement = async (req, res) => {
         const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
 
         if (parts.length === 3) {
-          return parts[0] * 3600 + parts[1] * 60 + parts[2];
+          // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
+          if (parts[2] === 0) {
+            // 분:초:00 형식 (예: "27:30:00" = 27분 30초, "25:15:00" = 25분 15초)
+            return parts[0] * 60 + parts[1];
+          } else {
+            // 시:분:초 형식 (실제로는 거의 없을 것 같음)
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+          }
         } else if (parts.length === 2) {
+          // 분:초 형식 (예: "1:27" = 1분 27초, "23:28" = 23분 28초)
           return parts[0] * 60 + parts[1];
         } else if (parts.length === 1) {
+          // 초만 있는 경우
           return parts[0];
         }
         return 0;
@@ -253,12 +262,40 @@ const createMeasurement = async (req, res) => {
     const mainCardIds = getAllCardIds(recipe.main_cards);
     const coolDownCardIds = getAllCardIds(recipe.cool_down_cards);
 
+    const parseVideoDuration = (durationStr) => {
+      if (!durationStr) return 0;
+      const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
+
+      if (parts.length === 3) {
+        // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
+        if (parts[2] === 0) {
+          return parts[0] * 60 + parts[1];
+        } else {
+          return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+      } else if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+      } else if (parts.length === 1) {
+        return parts[0];
+      }
+      return 0;
+    };
+
+    const formatSecondsToDuration = (seconds) => {
+      if (!seconds || seconds === 0) return "0:00";
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${minutes}:${String(secs).padStart(2, "0")}`;
+    };
+
     const formatCard = (card) => ({
       exercise_name: card.exercise_name || "",
       description: card.description || "",
       video_url: card.video_url || "",
       image_url: card.image_url || "",
-      video_duration: card.video_duration ? parseInt(card.video_duration) : 0,
+      video_duration: formatSecondsToDuration(
+        parseVideoDuration(card.video_duration)
+      ),
       fitness_category: card.fitness_category || "",
       equipment: card.equipment || "",
       body_part: card.body_part || "",
