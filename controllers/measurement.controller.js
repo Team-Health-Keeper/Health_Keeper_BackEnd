@@ -6,14 +6,10 @@ const { getAgeGroup, getMeasurementItems } = require("../utils/ageGroups");
 const createMeasurement = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { measurements } = req.body; // [{measure_key: "1", measure_value: "170"}, ...]
+    const reqArr = req.body.req_arr || req.body.measurements;
 
     // 입력 검증
-    if (
-      !measurements ||
-      !Array.isArray(measurements) ||
-      measurements.length === 0
-    ) {
+    if (!reqArr || !Array.isArray(reqArr) || reqArr.length === 0) {
       return res.status(400).json({
         success: false,
         message:
@@ -26,7 +22,7 @@ const createMeasurement = async (req, res) => {
     let age = null;
     let gender = null;
 
-    measurements.forEach((item) => {
+    reqArr.forEach((item) => {
       if (
         !item.measure_key ||
         item.measure_value === undefined ||
@@ -39,13 +35,9 @@ const createMeasurement = async (req, res) => {
       const key = String(item.measure_key);
       const value = String(item.measure_value);
 
-      // 나이와 성별을 measurements에서 추출 (measurement_code 테이블의 코드 사용)
-      // 나이: "53" (measurement_code 테이블)
-      // 성별: "54" (measurement_code 테이블)
-      // 호환성을 위해 "age", "gender"도 지원
       if (key === "53" || key === "age") {
         age = parseInt(value);
-        processedItems[key] = value; // 측정 항목에도 포함
+        processedItems[key] = value;
       } else if (key === "54" || key === "gender") {
         gender =
           value === "male" || value === "M"
@@ -53,18 +45,17 @@ const createMeasurement = async (req, res) => {
             : value === "female" || value === "F"
             ? "F"
             : value;
-        processedItems[key] = value; // 측정 항목에도 포함
+        processedItems[key] = value;
       } else {
         processedItems[key] = value;
       }
     });
 
-    // 나이와 성별이 없으면 기본값 사용 (AI 서버 호출을 위해)
     if (!age) {
-      age = 30; // 기본값
+      age = 30;
     }
     if (!gender) {
-      gender = "M"; // 기본값
+      gender = "M";
     }
 
     // 연령대 판단
@@ -139,9 +130,87 @@ const createMeasurement = async (req, res) => {
       measurementItems: processedItems,
     });
 
-    // 3. 레시피 정보 DB 저장
-    // DDL에 따르면 recipe 테이블 구조:
-    // - user_id, measurement_UUID, recipe_title, recipe_intro, difficulty, duration_min, fitness_grade, fitness_score, cards
+    // 3. AI 서버에서 받은 운동 이름들을 card 테이블과 매칭하여 ID 찾기
+    const warmUpExercises = aiResponse.warmUpExercises || [];
+    const mainExercises = aiResponse.mainExercises || [];
+    const coolDownExercises = aiResponse.coolDownExercises || [];
+
+    const convertExerciseNamesToCardIds = async (exerciseNames) => {
+      const cardIds = [];
+
+      for (const exerciseName of exerciseNames) {
+        if (!exerciseName || typeof exerciseName !== "string") {
+          continue;
+        }
+
+        const [matchedCards] = await pool.execute(
+          `SELECT id FROM card WHERE exercise_name = ? LIMIT 1`,
+          [exerciseName]
+        );
+
+        if (matchedCards.length > 0) {
+          cardIds.push(matchedCards[0].id);
+        }
+      }
+
+      return cardIds;
+    };
+
+    const warmUpCardIdArray = await convertExerciseNamesToCardIds(
+      warmUpExercises
+    );
+    const mainCardIdArray = await convertExerciseNamesToCardIds(mainExercises);
+    const coolDownCardIdArray = await convertExerciseNamesToCardIds(
+      coolDownExercises
+    );
+
+    const warmUpCardsString = warmUpCardIdArray.join(",");
+    const mainCardsString = mainCardIdArray.join(",");
+    const coolDownCardsString = coolDownCardIdArray.join(",");
+
+    const allCardIdsForDuration = [
+      ...warmUpCardIdArray,
+      ...mainCardIdArray,
+      ...coolDownCardIdArray,
+    ];
+
+    let totalDurationSeconds = 0;
+    if (allCardIdsForDuration.length > 0) {
+      const placeholders = allCardIdsForDuration.map(() => "?").join(",");
+      const [cards] = await pool.execute(
+        `SELECT video_duration FROM card WHERE id IN (${placeholders})`,
+        allCardIdsForDuration
+      );
+
+      const parseVideoDuration = (durationStr) => {
+        if (!durationStr) return 0;
+        const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
+
+        if (parts.length === 3) {
+          // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
+          if (parts[2] === 0) {
+            // 분:초:00 형식 (예: "27:30:00" = 27분 30초, "25:15:00" = 25분 15초)
+            return parts[0] * 60 + parts[1];
+          } else {
+            // 시:분:초 형식 (실제로는 거의 없을 것 같음)
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+          }
+        } else if (parts.length === 2) {
+          // 분:초 형식 (예: "1:27" = 1분 27초, "23:28" = 23분 28초)
+          return parts[0] * 60 + parts[1];
+        } else if (parts.length === 1) {
+          // 초만 있는 경우
+          return parts[0];
+        }
+        return 0;
+      };
+
+      cards.forEach((card) => {
+        totalDurationSeconds += parseVideoDuration(card.video_duration);
+      });
+    }
+
+    const durationMin = Math.round(totalDurationSeconds / 60);
     const [recipeResult] = await pool.execute(
       `INSERT INTO recipe (
         user_id,
@@ -152,75 +221,110 @@ const createMeasurement = async (req, res) => {
         duration_min, 
         fitness_grade, 
         fitness_score, 
-        cards
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        warm_up_cards,
+        main_cards,
+        cool_down_cards
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
-        measurementId, // measurement_UUID는 measurement.id를 사용
+        measurementId,
         aiResponse.recipeTitle || "맞춤 운동 레시피",
         aiResponse.recipeIntro || "AI가 추천하는 맞춤형 운동 프로그램입니다.",
-        aiResponse.difficulty || "중급",
-        aiResponse.durationMin || 30,
-        aiResponse.fitnessGrade || "B",
+        aiResponse.difficulty || "초급",
+        durationMin,
+        aiResponse.fitnessGrade || "참가",
         aiResponse.fitnessScore || 0,
-        JSON.stringify(aiResponse.exerciseCards || []), // 운동 카드 목록을 cards 컬럼에 저장
+        warmUpCardsString,
+        mainCardsString,
+        coolDownCardsString,
       ]
     );
 
     const recipeId = recipeResult.insertId;
 
-    // 4. 저장된 레시피 조회
+    // 5. 저장된 레시피 조회 및 card 테이블에서 카드 정보 가져오기
     const [recipes] = await pool.execute(
       `SELECT r.* FROM recipe r WHERE r.id = ?`,
       [recipeId]
     );
 
     const recipe = recipes[0];
-    // cards 컬럼을 exercise_cards로 변환 (프론트엔드 호환성)
-    if (recipe.cards) {
-      try {
-        recipe.exercise_cards = JSON.parse(recipe.cards);
-      } catch (e) {
-        recipe.exercise_cards = [];
+
+    const getAllCardIds = (cardsString) => {
+      if (!cardsString) return [];
+      return cardsString
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id);
+    };
+
+    const warmUpCardIds = getAllCardIds(recipe.warm_up_cards);
+    const mainCardIds = getAllCardIds(recipe.main_cards);
+    const coolDownCardIds = getAllCardIds(recipe.cool_down_cards);
+
+    const parseVideoDuration = (durationStr) => {
+      if (!durationStr) return 0;
+      const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
+
+      if (parts.length === 3) {
+        // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
+        if (parts[2] === 0) {
+          return parts[0] * 60 + parts[1];
+        } else {
+          return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+      } else if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+      } else if (parts.length === 1) {
+        return parts[0];
       }
-    } else {
-      recipe.exercise_cards = [];
-    }
+      return 0;
+    };
 
-    // 측정 데이터 조회 (measurement_UUID로 모든 측정 항목 가져오기)
-    const [allMeasurements] = await pool.execute(
-      `SELECT measurement_code, measurement_data 
-       FROM measurement 
-       WHERE measurement_UUID = ?
-       ORDER BY measurement_code ASC`,
-      [measurementUUID]
-    );
+    const formatSecondsToDuration = (seconds) => {
+      if (!seconds || seconds === 0) return "0:00";
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${minutes}:${String(secs).padStart(2, "0")}`;
+    };
 
-    // 측정 데이터를 객체 형태로 변환
-    const measurementDataObj = {};
-    allMeasurements.forEach((m) => {
-      measurementDataObj[m.measurement_code] = m.measurement_data;
+    const formatCard = (card) => ({
+      exercise_name: card.exercise_name || "",
+      description: card.description || "",
+      video_url: card.video_url || "",
+      image_url: card.image_url || "",
+      video_duration: formatSecondsToDuration(
+        parseVideoDuration(card.video_duration)
+      ),
+      fitness_category: card.fitness_category || "",
+      equipment: card.equipment || "",
+      body_part: card.body_part || "",
+      target_audience: card.target_audience || "",
     });
 
+    const getCardsByIds = async (cardIds) => {
+      if (cardIds.length === 0) return [];
+      const placeholders = cardIds.map(() => "?").join(",");
+      const [cards] = await pool.execute(
+        `SELECT * FROM card WHERE id IN (${placeholders}) ORDER BY FIELD(id, ${placeholders})`,
+        [...cardIds, ...cardIds]
+      );
+      return cards.map(formatCard);
+    };
+
+    const warmUpCardList = await getCardsByIds(warmUpCardIds);
+    const mainCardList = await getCardsByIds(mainCardIds);
+    const coolDownCardList = await getCardsByIds(coolDownCardIds);
+
     res.status(201).json({
-      success: true,
-      message: "체력 측정 및 운동 레시피가 생성되었습니다.",
-      data: {
-        measurement: {
-          id: measurementId,
-          measurement_UUID: measurementUUID,
-          measurement_data: {
-            ageGroup: determinedAgeGroup,
-            age: age,
-            gender,
-            activityLevel: "moderate",
-            goal: "health",
-            healthConditions: null,
-            measurementItems: measurementDataObj,
-          },
-        },
-        recipe: recipe,
-      },
+      recipe_title: recipe.recipe_title || "",
+      recipe_intro: recipe.recipe_intro || "",
+      difficulty: recipe.difficulty || "",
+      duration_min: recipe.duration_min || 0,
+      fitness_grade: recipe.fitness_grade || "",
+      warm_up_card_list: warmUpCardList,
+      main_card_list: mainCardList,
+      cool_down_card_list: coolDownCardList,
     });
   } catch (error) {
     console.error("체력 측정 생성 오류:", error);
@@ -339,16 +443,35 @@ const getRecipe = async (req, res) => {
     }
 
     const recipe = recipes[0];
-    // cards 컬럼을 exercise_cards로 변환 (프론트엔드 호환성)
-    if (recipe.cards) {
-      try {
-        recipe.exercise_cards = JSON.parse(recipe.cards);
-      } catch (e) {
-        recipe.exercise_cards = [];
-      }
-    } else {
-      recipe.exercise_cards = [];
+
+    const parseCardIdsForRecipe = (cardsString) => {
+      if (!cardsString) return [];
+      return cardsString
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id);
+    };
+
+    const warmUpIdsForRecipe = parseCardIdsForRecipe(recipe.warm_up_cards);
+    const mainIdsForRecipe = parseCardIdsForRecipe(recipe.main_cards);
+    const coolDownIdsForRecipe = parseCardIdsForRecipe(recipe.cool_down_cards);
+    const allCardIdsForRecipe = [
+      ...warmUpIdsForRecipe,
+      ...mainIdsForRecipe,
+      ...coolDownIdsForRecipe,
+    ];
+
+    let cardListForRecipe = [];
+    if (allCardIdsForRecipe.length > 0) {
+      const placeholders = allCardIdsForRecipe.map(() => "?").join(",");
+      const [cards] = await pool.execute(
+        `SELECT * FROM card WHERE id IN (${placeholders})`,
+        allCardIdsForRecipe
+      );
+      cardListForRecipe = cards;
     }
+
+    recipe.exercise_cards = cardListForRecipe;
 
     res.json({
       success: true,
