@@ -40,11 +40,17 @@ const getAllClubs = async (req, res) => {
     const offset = (page - 1) * limit;
 
     // 검색 파라미터 추출
-    const { keyword, category } = req.query;
+    const { keyword, category, region } = req.query;
 
     // WHERE 조건절 구성
     let whereClause = 'WHERE 1=1';
     const params = [];
+
+    // 지역(시/도) 필터 - 정확히 일치
+    if (region) {
+      whereClause += ' AND CTPRVN_NM = ?';
+      params.push(region);
+    }
 
     // 통합 검색어 - 동호회명, 시도명, 시군구명에서 부분 일치 검색 (OR 조건)
     if (keyword) {
