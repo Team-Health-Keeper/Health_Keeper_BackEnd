@@ -136,7 +136,15 @@ const getRecipeExercises = async (req, res) => {
 
     // 레시피 조회
     const [recipes] = await pool.execute(
-      `SELECT warm_up_cards, main_cards, cool_down_cards FROM recipe WHERE id = ?`,
+      `SELECT 
+        recipe_title,
+        recipe_intro,
+        difficulty,
+        duration_min,
+        warm_up_cards,
+        main_cards,
+        cool_down_cards
+      FROM recipe WHERE id = ?`,
       [recipeId]
     );
 
@@ -159,9 +167,26 @@ const getRecipeExercises = async (req, res) => {
       return [...new Set(ids)];
     };
 
+    // 카드 개수 계산 함수
+    const countCards = (cardsString) => {
+      if (!cardsString || cardsString.trim() === "") return 0;
+      const cardIds = cardsString
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id !== "");
+      // 각 카테고리 내에서만 중복 제거하여 고유한 카드 개수 반환
+      return new Set(cardIds).size;
+    };
+
     const warmUpCardIds = getAllCardIds(recipe.warm_up_cards);
     const mainCardIds = getAllCardIds(recipe.main_cards);
     const coolDownCardIds = getAllCardIds(recipe.cool_down_cards);
+
+    // 카드 개수 계산 (각 카테고리별로 계산 후 합산)
+    const warmUpCount = countCards(recipe.warm_up_cards);
+    const mainCount = countCards(recipe.main_cards);
+    const coolDownCount = countCards(recipe.cool_down_cards);
+    const cardCount = warmUpCount + mainCount + coolDownCount;
 
     // 모든 카드 ID 수집 (카테고리 구분 없이 하나의 배열로)
     const allCardIds = [...warmUpCardIds, ...mainCardIds, ...coolDownCardIds];
@@ -169,6 +194,11 @@ const getRecipeExercises = async (req, res) => {
     if (allCardIds.length === 0) {
       return res.json({
         success: true,
+        recipe_title: recipe.recipe_title || "",
+        recipe_intro: recipe.recipe_intro || "",
+        difficulty: recipe.difficulty || "",
+        duration_min: recipe.duration_min || 0,
+        card_count: cardCount,
         data: [],
       });
     }
@@ -207,6 +237,11 @@ const getRecipeExercises = async (req, res) => {
 
     res.json({
       success: true,
+      recipe_title: recipe.recipe_title || "",
+      recipe_intro: recipe.recipe_intro || "",
+      difficulty: recipe.difficulty || "",
+      duration_min: recipe.duration_min || 0,
+      card_count: cardCount,
       data: formattedCards,
     });
   } catch (error) {
