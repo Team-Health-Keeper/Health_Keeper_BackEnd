@@ -126,20 +126,45 @@ const getNearbyFacilities = async (req, res) => {
       });
     }
 
+    // 페이지네이션 파라미터 (기본값: page=1, limit=20)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
     // 선택 파라미터
     const radius = parseFloat(req.query.radius) || 5;
-    const limit = parseInt(req.query.limit) || 20;
     const { facilityType } = req.query;
 
     // WHERE 조건절 구성
     let whereClause = "WHERE (DEL_AT IS NULL OR DEL_AT = 'N')";
-    const params = [lat, lng, lat];
+    const baseParams = [];
 
     // 시설 유형 필터
     if (facilityType) {
       whereClause += ' AND FCLTY_TY_NM LIKE ?';
-      params.push(`%${facilityType}%`);
+      baseParams.push(`%${facilityType}%`);
     }
+
+    // 전체 개수 조회 (반경 내)
+    const countQuery = `
+      SELECT COUNT(*) AS total FROM (
+        SELECT 
+          id,
+          ROUND(
+            6371 * ACOS(
+              COS(RADIANS(?)) * COS(RADIANS(FCLTY_LA)) * 
+              COS(RADIANS(FCLTY_LO) - RADIANS(?)) + 
+              SIN(RADIANS(?)) * SIN(RADIANS(FCLTY_LA))
+            ), 2
+          ) AS distance
+        FROM sports_facility
+        ${whereClause}
+        HAVING distance <= ?
+      ) AS subquery
+    `;
+
+    const countParams = [lat, lng, lat, ...baseParams, radius];
+    const [[{ total: totalCount }]] = await pool.query(countQuery, countParams);
 
     // Haversine 공식으로 거리 계산 및 반경 내 필터링
     const dataQuery = `
@@ -167,45 +192,27 @@ const getNearbyFacilities = async (req, res) => {
       ${whereClause}
       HAVING distance <= ?
       ORDER BY distance ASC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `;
 
-    params.push(radius, limit);
+    const dataParams = [lat, lng, lat, ...baseParams, radius, limit, offset];
+    const [rows] = await pool.query(dataQuery, dataParams);
 
-    const [rows] = await pool.query(dataQuery, params);
-
-    // 전체 개수 조회 (반경 내)
-    const countQuery = `
-      SELECT COUNT(*) AS total FROM (
-        SELECT 
-          id,
-          ROUND(
-            6371 * ACOS(
-              COS(RADIANS(?)) * COS(RADIANS(FCLTY_LA)) * 
-              COS(RADIANS(FCLTY_LO) - RADIANS(?)) + 
-              SIN(RADIANS(?)) * SIN(RADIANS(FCLTY_LA))
-            ), 2
-          ) AS distance
-        FROM sports_facility
-        ${whereClause}
-        HAVING distance <= ?
-      ) AS subquery
-    `;
-
-    const countParams = facilityType
-      ? [lat, lng, lat, `%${facilityType}%`, radius]
-      : [lat, lng, lat, radius];
-
-    const [[{ total: totalCount }]] = await pool.query(countQuery, countParams);
+    // 총 페이지 수 계산
+    const totalPages = Math.ceil(totalCount / limit);
 
     res.json({
       success: true,
+      count: rows.length,
+      totalCount,
+      page,
+      totalPages,
+      hasNextPage: page < totalPages,
       data: rows,
       meta: {
         centerLat: lat,
         centerLng: lng,
         radius,
-        totalCount,
       },
     });
   } catch (error) {
