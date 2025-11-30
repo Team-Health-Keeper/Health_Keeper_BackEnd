@@ -6,7 +6,7 @@ const pool = require('../config/database');
  *
  * 배지 조건:
  * 1: 🔥 7일 연속 출석
- * 2: ⭐ A등급 달성
+ * 2: ⭐ 1등급 달성
  * 3: 🏆 전체 상위 2%
  * 4: 💪 30일 완주 (총 출석 30일 이상)
  * 5: 🎯 체력측정 3회 이상
@@ -50,19 +50,21 @@ const updateBadgeInfo = async (userId, fitnessData) => {
     earnedBadges.push('1');
   }
 
-  // 2. A등급 체크 (recipe 테이블의 최신 fitness_grade 기준)
-  if (
-    fitnessData.fitnessGrade &&
-    fitnessData.fitnessGrade.toUpperCase().startsWith('A')
-  ) {
+  // 2. 1등급 달성 체크 (recipe 테이블의 최신 fitness_grade 기준)
+  if (fitnessData.fitnessGrade && fitnessData.fitnessGrade === '1등급') {
     earnedBadges.push('2');
   }
 
-  // 3. 전체 상위 2% 체크 (recipe 테이블의 fitness_score 기준)
+  // 3. 전체 상위 2% 체크 (유저별 최고 fitness_score 기준)
+  // 각 유저의 최고 점수를 기준으로 순위 계산
   const [[rankResult]] = await pool.query(
     `SELECT 
-      (SELECT COUNT(*) FROM recipe WHERE fitness_score > ?) + 1 AS userRank,
-      (SELECT COUNT(*) FROM recipe WHERE fitness_score IS NOT NULL) AS totalUsers`,
+      (SELECT COUNT(DISTINCT user_id) 
+       FROM recipe 
+       WHERE fitness_score > COALESCE(?, 0)) + 1 AS userRank,
+      (SELECT COUNT(DISTINCT user_id) 
+       FROM recipe 
+       WHERE fitness_score IS NOT NULL) AS totalUsers`,
     [fitnessData.fitnessScore || 0]
   );
 
@@ -102,15 +104,28 @@ const updateBadgeInfo = async (userId, fitnessData) => {
   // 6. 프리미엄 회원 체크 (현재 미사용 - is_premium 컬럼 없음)
   // 추후 프리미엄 기능 추가 시 활성화
 
-  // badge_info 업데이트
+  // badge_info 업데이트 (기존 레코드 확인 후 UPDATE 또는 INSERT)
   const badgeInfoStr = earnedBadges.join(',');
 
-  await pool.query(
-    `INSERT INTO mypage (user_id, badge_info) 
-     VALUES (?, ?) 
-     ON DUPLICATE KEY UPDATE badge_info = ?`,
-    [userId, badgeInfoStr, badgeInfoStr]
+  // 해당 유저의 mypage 레코드가 있는지 확인
+  const [[existingRecord]] = await pool.query(
+    `SELECT id FROM mypage WHERE user_id = ? LIMIT 1`,
+    [userId]
   );
+
+  if (existingRecord) {
+    // 기존 레코드가 있으면 UPDATE
+    await pool.query(`UPDATE mypage SET badge_info = ? WHERE user_id = ?`, [
+      badgeInfoStr,
+      userId,
+    ]);
+  } else {
+    // 없으면 INSERT
+    await pool.query(`INSERT INTO mypage (user_id, badge_info) VALUES (?, ?)`, [
+      userId,
+      badgeInfoStr,
+    ]);
+  }
 
   return {
     badgeInfo: badgeInfoStr,
@@ -218,6 +233,19 @@ const getMyPage = async (req, res) => {
       [userId]
     );
 
+    // 6. 체력측정 이력 (그래프용 - 모든 측정 기록)
+    const [measurementHistory] = await pool.query(
+      `SELECT 
+         fitness_grade AS fitnessGrade,
+         fitness_score AS fitnessScore,
+         created_at AS measuredAt
+       FROM recipe 
+       WHERE user_id = ? 
+         AND fitness_score IS NOT NULL
+       ORDER BY created_at ASC`,
+      [userId]
+    );
+
     // 레시피 운동 개수 계산
     const formattedRecipes = recipes.map((recipe) => {
       let exerciseCount = 0;
@@ -262,6 +290,7 @@ const getMyPage = async (req, res) => {
         weeklyVideoWatch: weeklyVideoResult.weeklyVideoWatch,
         grass: formattedGrass,
         recipes: formattedRecipes,
+        measurementHistory: measurementHistory,
       },
     });
   } catch (error) {
