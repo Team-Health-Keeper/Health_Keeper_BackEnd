@@ -26,6 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/health", require("./routes/health.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/measurement", require("./routes/measurement.routes"));
+app.use("/api/recipes", require("./routes/recipes.routes"));
 // Add more routes here as needed
 // app.use('/api/users', require('./routes/user.routes'));
 app.use("/api/clubs", require("./routes/clubs.routes"));

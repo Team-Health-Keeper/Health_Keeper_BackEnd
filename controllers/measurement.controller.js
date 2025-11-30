@@ -2,6 +2,31 @@ const pool = require("../config/database");
 const aiService = require("../services/ai.service");
 const { getAgeGroup, getMeasurementItems } = require("../utils/ageGroups");
 
+// video_duration 파싱 유틸리티 함수
+const parseVideoDuration = (durationStr) => {
+  if (!durationStr) return 0;
+  const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
+
+  if (parts.length === 3) {
+    // "27:30:00" 형식 처리
+    // 비디오 길이는 보통 1시간 미만이므로, 첫 번째 숫자가 60 미만이면 분:초:00 형식
+    if (parts[0] >= 60) {
+      // 시:분:초 형식 (예: "1:30:15" = 1시간 30분 15초)
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else {
+      // 분:초:00 형식 (예: "27:30:00" = 27분 30초, "25:15:00" = 25분 15초)
+      return parts[0] * 60 + parts[1];
+    }
+  } else if (parts.length === 2) {
+    // 분:초 형식 (예: "1:27" = 1분 27초, "23:28" = 23분 28초)
+    return parts[0] * 60 + parts[1];
+  } else if (parts.length === 1) {
+    // 초만 있는 경우
+    return parts[0];
+  }
+  return 0;
+};
+
 // 체력 측정 정보 입력 및 AI 레시피 생성
 const createMeasurement = async (req, res) => {
   try {
@@ -164,51 +189,43 @@ const createMeasurement = async (req, res) => {
       coolDownExercises
     );
 
-    const warmUpCardsString = warmUpCardIdArray.join(",");
-    const mainCardsString = mainCardIdArray.join(",");
-    const coolDownCardsString = coolDownCardIdArray.join(",");
+    // 각 카테고리 내에서만 중복 제거 (카테고리 간 중복은 허용)
+    const removeDuplicatesInArray = (arr) => {
+      return [...new Set(arr)];
+    };
 
-    const allCardIdsForDuration = [
-      ...warmUpCardIdArray,
-      ...mainCardIdArray,
-      ...coolDownCardIdArray,
-    ];
+    const uniqueWarmUpCardIds = removeDuplicatesInArray(warmUpCardIdArray);
+    const uniqueMainCardIds = removeDuplicatesInArray(mainCardIdArray);
+    const uniqueCoolDownCardIds = removeDuplicatesInArray(coolDownCardIdArray);
 
-    let totalDurationSeconds = 0;
-    if (allCardIdsForDuration.length > 0) {
-      const placeholders = allCardIdsForDuration.map(() => "?").join(",");
+    const warmUpCardsString = uniqueWarmUpCardIds.join(",");
+    const mainCardsString = uniqueMainCardIds.join(",");
+    const coolDownCardsString = uniqueCoolDownCardIds.join(",");
+
+    // duration 계산: 각 카테고리별로 계산 후 합산 (카테고리 간 중복 허용)
+    const calculateCategoryDuration = async (cardIds) => {
+      if (cardIds.length === 0) return 0;
+      const placeholders = cardIds.map(() => "?").join(",");
       const [cards] = await pool.execute(
         `SELECT video_duration FROM card WHERE id IN (${placeholders})`,
-        allCardIdsForDuration
+        cardIds
       );
 
-      const parseVideoDuration = (durationStr) => {
-        if (!durationStr) return 0;
-        const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
-
-        if (parts.length === 3) {
-          // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
-          if (parts[2] === 0) {
-            // 분:초:00 형식 (예: "27:30:00" = 27분 30초, "25:15:00" = 25분 15초)
-            return parts[0] * 60 + parts[1];
-          } else {
-            // 시:분:초 형식 (실제로는 거의 없을 것 같음)
-            return parts[0] * 3600 + parts[1] * 60 + parts[2];
-          }
-        } else if (parts.length === 2) {
-          // 분:초 형식 (예: "1:27" = 1분 27초, "23:28" = 23분 28초)
-          return parts[0] * 60 + parts[1];
-        } else if (parts.length === 1) {
-          // 초만 있는 경우
-          return parts[0];
-        }
-        return 0;
-      };
-
+      let totalSeconds = 0;
       cards.forEach((card) => {
-        totalDurationSeconds += parseVideoDuration(card.video_duration);
+        totalSeconds += parseVideoDuration(card.video_duration);
       });
-    }
+      return totalSeconds;
+    };
+
+    // 각 카테고리별로 duration 계산 후 합산
+    const warmUpDuration = await calculateCategoryDuration(uniqueWarmUpCardIds);
+    const mainDuration = await calculateCategoryDuration(uniqueMainCardIds);
+    const coolDownDuration = await calculateCategoryDuration(
+      uniqueCoolDownCardIds
+    );
+    const totalDurationSeconds =
+      warmUpDuration + mainDuration + coolDownDuration;
 
     const durationMin = Math.round(totalDurationSeconds / 60);
     const [recipeResult] = await pool.execute(
@@ -252,34 +269,17 @@ const createMeasurement = async (req, res) => {
 
     const getAllCardIds = (cardsString) => {
       if (!cardsString) return [];
-      return cardsString
+      const ids = cardsString
         .split(",")
         .map((id) => id.trim())
         .filter((id) => id);
+      // 각 카테고리 내에서만 중복 제거
+      return [...new Set(ids)];
     };
 
     const warmUpCardIds = getAllCardIds(recipe.warm_up_cards);
     const mainCardIds = getAllCardIds(recipe.main_cards);
     const coolDownCardIds = getAllCardIds(recipe.cool_down_cards);
-
-    const parseVideoDuration = (durationStr) => {
-      if (!durationStr) return 0;
-      const parts = durationStr.split(":").map((p) => parseInt(p) || 0);
-
-      if (parts.length === 3) {
-        // "27:30:00" 형식: 세 번째 부분이 00이면 분:초:00 형식으로 처리
-        if (parts[2] === 0) {
-          return parts[0] * 60 + parts[1];
-        } else {
-          return parts[0] * 3600 + parts[1] * 60 + parts[2];
-        }
-      } else if (parts.length === 2) {
-        return parts[0] * 60 + parts[1];
-      } else if (parts.length === 1) {
-        return parts[0];
-      }
-      return 0;
-    };
 
     const formatSecondsToDuration = (seconds) => {
       if (!seconds || seconds === 0) return "0:00";
@@ -446,32 +446,36 @@ const getRecipe = async (req, res) => {
 
     const parseCardIdsForRecipe = (cardsString) => {
       if (!cardsString) return [];
-      return cardsString
+      const ids = cardsString
         .split(",")
         .map((id) => id.trim())
         .filter((id) => id);
+      // 각 카테고리 내에서만 중복 제거
+      return [...new Set(ids)];
     };
 
     const warmUpIdsForRecipe = parseCardIdsForRecipe(recipe.warm_up_cards);
     const mainIdsForRecipe = parseCardIdsForRecipe(recipe.main_cards);
     const coolDownIdsForRecipe = parseCardIdsForRecipe(recipe.cool_down_cards);
-    const allCardIdsForRecipe = [
-      ...warmUpIdsForRecipe,
-      ...mainIdsForRecipe,
-      ...coolDownIdsForRecipe,
-    ];
 
-    let cardListForRecipe = [];
-    if (allCardIdsForRecipe.length > 0) {
-      const placeholders = allCardIdsForRecipe.map(() => "?").join(",");
+    // 각 카테고리별로 카드 조회 (카테고리 간 중복은 허용)
+    const getCardsByIds = async (cardIds) => {
+      if (cardIds.length === 0) return [];
+      const placeholders = cardIds.map(() => "?").join(",");
       const [cards] = await pool.execute(
-        `SELECT * FROM card WHERE id IN (${placeholders})`,
-        allCardIdsForRecipe
+        `SELECT * FROM card WHERE id IN (${placeholders}) ORDER BY FIELD(id, ${placeholders})`,
+        [...cardIds, ...cardIds]
       );
-      cardListForRecipe = cards;
-    }
+      return cards;
+    };
 
-    recipe.exercise_cards = cardListForRecipe;
+    const warmUpCards = await getCardsByIds(warmUpIdsForRecipe);
+    const mainCards = await getCardsByIds(mainIdsForRecipe);
+    const coolDownCards = await getCardsByIds(coolDownIdsForRecipe);
+
+    recipe.warm_up_cards_list = warmUpCards;
+    recipe.main_cards_list = mainCards;
+    recipe.cool_down_cards_list = coolDownCards;
 
     res.json({
       success: true,

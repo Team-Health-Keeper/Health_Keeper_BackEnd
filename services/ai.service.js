@@ -319,18 +319,18 @@ const generateMockRecipe = (measurementData) => {
   // 목표에 따른 난이도 결정
   let difficulty = "초급";
   let fitnessScore = 50;
-  let fitnessGrade = "보통";
+  let fitnessGrade = "참가"; // ENUM: '1등급','2등급','3등급','참가'
 
   if (goal === "weight_loss") {
     if (bmi > 25) {
       difficulty = "중급";
       fitnessScore = 60;
-      fitnessGrade = "개선 필요";
+      fitnessGrade = "3등급";
     }
   } else if (goal === "muscle_gain") {
     difficulty = "중급";
     fitnessScore = 70;
-    fitnessGrade = "양호";
+    fitnessGrade = "2등급";
   }
 
   // 목표에 따른 레시피 제목
