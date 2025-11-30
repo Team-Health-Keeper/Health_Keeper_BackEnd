@@ -167,30 +167,33 @@ const getNearbyFacilities = async (req, res) => {
     const [[{ total: totalCount }]] = await pool.query(countQuery, countParams);
 
     // Haversine 공식으로 거리 계산 및 반경 내 필터링
+    // 서브쿼리로 먼저 거리 계산 후 필터링, 그 다음 LIMIT/OFFSET 적용
     const dataQuery = `
-      SELECT 
-        id,
-        FCLTY_NM,
-        FCLTY_TY_NM,
-        FCLTY_STATE_VALUE,
-        ROAD_NM_ZIP_NO,
-        RDNMADR_ONE_NM,
-        RDNMADR_TWO_NM,
-        FCLTY_TEL_NO,
-        POSESN_MBY_CTPRVN_NM,
-        POSESN_MBY_SIGNGU_NM,
-        FCLTY_LA,
-        FCLTY_LO,
-        ROUND(
-          6371 * ACOS(
-            COS(RADIANS(?)) * COS(RADIANS(FCLTY_LA)) * 
-            COS(RADIANS(FCLTY_LO) - RADIANS(?)) + 
-            SIN(RADIANS(?)) * SIN(RADIANS(FCLTY_LA))
-          ), 2
-        ) AS distance
-      FROM sports_facility
-      ${whereClause}
-      HAVING distance <= ?
+      SELECT * FROM (
+        SELECT 
+          id,
+          FCLTY_NM,
+          FCLTY_TY_NM,
+          FCLTY_STATE_VALUE,
+          ROAD_NM_ZIP_NO,
+          RDNMADR_ONE_NM,
+          RDNMADR_TWO_NM,
+          FCLTY_TEL_NO,
+          POSESN_MBY_CTPRVN_NM,
+          POSESN_MBY_SIGNGU_NM,
+          FCLTY_LA,
+          FCLTY_LO,
+          ROUND(
+            6371 * ACOS(
+              COS(RADIANS(?)) * COS(RADIANS(FCLTY_LA)) * 
+              COS(RADIANS(FCLTY_LO) - RADIANS(?)) + 
+              SIN(RADIANS(?)) * SIN(RADIANS(FCLTY_LA))
+            ), 2
+          ) AS distance
+        FROM sports_facility
+        ${whereClause}
+      ) AS sub
+      WHERE distance <= ?
       ORDER BY distance ASC
       LIMIT ? OFFSET ?
     `;

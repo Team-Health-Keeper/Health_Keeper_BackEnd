@@ -10,9 +10,9 @@ const pool = require('../config/database');
  * 3: 🏆 전체 상위 2%
  * 4: 💪 30일 완주 (총 출석 30일 이상)
  * 5: 🎯 체력측정 3회 이상
- * 6: 👑 프리미엄 회원
+ * 6: 👑 프리미엄 회원 (현재 미사용)
  */
-const updateBadgeInfo = async (userId, userData) => {
+const updateBadgeInfo = async (userId, fitnessData) => {
   const earnedBadges = [];
 
   // 1. 연속 출석 계산 (7일 연속)
@@ -50,20 +50,20 @@ const updateBadgeInfo = async (userId, userData) => {
     earnedBadges.push('1');
   }
 
-  // 2. A등급 체크
+  // 2. A등급 체크 (recipe 테이블의 최신 fitness_grade 기준)
   if (
-    userData.fitness_grade &&
-    userData.fitness_grade.toUpperCase().startsWith('A')
+    fitnessData.fitnessGrade &&
+    fitnessData.fitnessGrade.toUpperCase().startsWith('A')
   ) {
     earnedBadges.push('2');
   }
 
-  // 3. 전체 상위 2% 체크
+  // 3. 전체 상위 2% 체크 (recipe 테이블의 fitness_score 기준)
   const [[rankResult]] = await pool.query(
     `SELECT 
-      (SELECT COUNT(*) FROM users WHERE fitness_score > ?) + 1 AS userRank,
-      (SELECT COUNT(*) FROM users WHERE fitness_score IS NOT NULL) AS totalUsers`,
-    [userData.fitness_score || 0]
+      (SELECT COUNT(*) FROM recipe WHERE fitness_score > ?) + 1 AS userRank,
+      (SELECT COUNT(*) FROM recipe WHERE fitness_score IS NOT NULL) AS totalUsers`,
+    [fitnessData.fitnessScore || 0]
   );
 
   const topPercent =
@@ -99,10 +99,8 @@ const updateBadgeInfo = async (userId, userData) => {
     earnedBadges.push('5');
   }
 
-  // 6. 프리미엄 회원 체크
-  if (userData.is_premium === 1 || userData.is_premium === true) {
-    earnedBadges.push('6');
-  }
+  // 6. 프리미엄 회원 체크 (현재 미사용 - is_premium 컬럼 없음)
+  // 추후 프리미엄 기능 추가 시 활성화
 
   // badge_info 업데이트
   const badgeInfoStr = earnedBadges.join(',');
@@ -135,9 +133,9 @@ const getMyPage = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. 사용자 정보 조회
+    // 1. 사용자 기본 정보 조회
     const [[userData]] = await pool.query(
-      `SELECT id, name, email, fitness_grade, fitness_score, is_premium, created_at 
+      `SELECT id, name, email, created_at 
        FROM users 
        WHERE id = ?`,
       [userId]
@@ -150,8 +148,23 @@ const getMyPage = async (req, res) => {
       });
     }
 
-    // 2. 배지 조건 체크 및 업데이트
-    const badgeResult = await updateBadgeInfo(userId, userData);
+    // 2. 최신 레시피에서 fitness_grade, fitness_score 조회
+    const [[latestRecipe]] = await pool.query(
+      `SELECT fitness_grade, fitness_score 
+       FROM recipe 
+       WHERE user_id = ? 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [userId]
+    );
+
+    const fitnessData = {
+      fitnessGrade: latestRecipe?.fitness_grade || null,
+      fitnessScore: latestRecipe?.fitness_score || null,
+    };
+
+    // 3. 배지 조건 체크 및 업데이트
+    const badgeResult = await updateBadgeInfo(userId, fitnessData);
 
     // 3. 이번 주 영상 시청 횟수
     const [[weeklyVideoResult]] = await pool.query(
@@ -234,8 +247,8 @@ const getMyPage = async (req, res) => {
           userId: userData.id,
           name: userData.name,
           email: userData.email,
-          fitnessGrade: userData.fitness_grade,
-          fitnessScore: userData.fitness_score,
+          fitnessGrade: fitnessData.fitnessGrade,
+          fitnessScore: fitnessData.fitnessScore,
         },
         ranking: {
           totalUsers: badgeResult.rankData.totalUsers,
