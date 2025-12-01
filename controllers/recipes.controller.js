@@ -1,4 +1,5 @@
 const pool = require("../config/database");
+const jwt = require("jsonwebtoken");
 
 // video_duration 파싱 유틸리티 함수 (measurement.controller.js와 동일)
 const parseVideoDuration = (durationStr) => {
@@ -20,22 +21,73 @@ const parseVideoDuration = (durationStr) => {
 };
 
 /**
- * 레시피 목록 조회 (공개 API - 로그인 불필요)
- * GET /api/recipes?page=1&limit=20&recipe_title=검색어
+ * 레시피 목록 조회
+ * GET /api/recipes?page=1&limit=10&recipe_title=검색어&for_me=Y
+ * for_me=Y일 때는 JWT 인증 필요 (내 레시피만 조회)
+ * for_me=N이거나 없으면 전체 레시피 조회 (로그인 불필요)
  */
 const getAllRecipes = async (req, res) => {
   try {
-    // 페이지네이션 파라미터 (기본값: page=1, limit=20)
+    // 페이지네이션 파라미터 (기본값: page=1, limit=10)
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     // 검색 파라미터 추출
-    const { recipe_title } = req.query;
+    const { recipe_title, for_me } = req.query;
+
+    // for_me 파라미터 처리
+    let userId = null;
+    if (for_me === "Y") {
+      // JWT 토큰에서 사용자 ID 추출
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          message: "내 레시피 조회를 위해서는 로그인이 필요합니다.",
+        });
+      }
+
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.id;
+
+        // 사용자 존재 확인
+        const [users] = await pool.execute("SELECT * FROM users WHERE id = ?", [
+          userId,
+        ]);
+        if (users.length === 0) {
+          return res.status(401).json({
+            success: false,
+            message: "유효하지 않은 사용자입니다.",
+          });
+        }
+      } catch (error) {
+        if (error.name === "JsonWebTokenError") {
+          return res.status(401).json({
+            success: false,
+            message: "유효하지 않은 토큰입니다.",
+          });
+        }
+        if (error.name === "TokenExpiredError") {
+          return res.status(401).json({
+            success: false,
+            message: "토큰이 만료되었습니다.",
+          });
+        }
+        throw error;
+      }
+    }
 
     // WHERE 조건절 구성
     let whereClause = "WHERE 1=1";
     const params = [];
+
+    // 내 레시피만 조회 (for_me=Y일 때)
+    if (for_me === "Y" && userId) {
+      whereClause += " AND user_id = ?";
+      params.push(userId);
+    }
 
     // 레시피 제목 검색 (부분 일치)
     if (recipe_title) {
