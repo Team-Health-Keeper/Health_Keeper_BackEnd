@@ -27,7 +27,14 @@ const convertToAIInput = (measurementItems, age, gender) => {
   for (const [measureKey, measureValue] of Object.entries(measurementItems)) {
     const keyNum = parseInt(measureKey);
 
+    // measure_key: 53 (나이), 54 (성별)은 건너뛰기
     if (keyNum === 53 || keyNum === 54) {
+      continue;
+    }
+
+    // measure_key: 55 (개월 수)는 MESURE_IEM_053_VALUE로 변환
+    if (keyNum === 55) {
+      aiInput["MESURE_IEM_053_VALUE"] = String(measureValue || "");
       continue;
     }
 

@@ -46,6 +46,7 @@ const createMeasurement = async (req, res) => {
     const processedItems = {};
     let age = null;
     let gender = null;
+    let months = null; // 개월 수 (measure_key: 55)
 
     reqArr.forEach((item) => {
       if (
@@ -70,6 +71,10 @@ const createMeasurement = async (req, res) => {
             : value === "female" || value === "F"
             ? "F"
             : value;
+        processedItems[key] = value;
+      } else if (key === "55") {
+        // 개월 수 (유아일 때)
+        months = parseInt(value);
         processedItems[key] = value;
       } else {
         processedItems[key] = value;
