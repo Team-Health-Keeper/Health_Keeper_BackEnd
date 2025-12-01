@@ -188,42 +188,8 @@ const getRecipeExercises = async (req, res) => {
     const coolDownCount = countCards(recipe.cool_down_cards);
     const cardCount = warmUpCount + mainCount + coolDownCount;
 
-    // 모든 카드 ID 수집 (카테고리 구분 없이 하나의 배열로)
-    const allCardIds = [...warmUpCardIds, ...mainCardIds, ...coolDownCardIds];
-
-    if (allCardIds.length === 0) {
-      return res.json({
-        success: true,
-        recipe_title: recipe.recipe_title || "",
-        recipe_intro: recipe.recipe_intro || "",
-        difficulty: recipe.difficulty || "",
-        duration_min: recipe.duration_min || 0,
-        card_count: cardCount,
-        data: [],
-      });
-    }
-
-    // 카드 정보 조회
-    const placeholders = allCardIds.map(() => "?").join(",");
-    const [cards] = await pool.execute(
-      `SELECT 
-        exercise_name,
-        description,
-        video_url,
-        image_url,
-        video_duration,
-        fitness_category,
-        equipment,
-        body_part,
-        target_audience
-      FROM card 
-      WHERE id IN (${placeholders}) 
-      ORDER BY FIELD(id, ${placeholders})`,
-      [...allCardIds, ...allCardIds]
-    );
-
-    // 응답 데이터 포맷팅
-    const formattedCards = cards.map((card) => ({
+    // 카드 포맷팅 함수
+    const formatCard = (card) => ({
       exercise_name: card.exercise_name || "",
       description: card.description || "",
       video_url: card.video_url || "",
@@ -233,7 +199,35 @@ const getRecipeExercises = async (req, res) => {
       equipment: card.equipment || "",
       body_part: card.body_part || "",
       target_audience: card.target_audience || "",
-    }));
+    });
+
+    // 각 카테고리별 카드 조회 함수
+    const getCardsByIds = async (cardIds) => {
+      if (cardIds.length === 0) return [];
+      const placeholders = cardIds.map(() => "?").join(",");
+      const [cards] = await pool.execute(
+        `SELECT 
+          exercise_name,
+          description,
+          video_url,
+          image_url,
+          video_duration,
+          fitness_category,
+          equipment,
+          body_part,
+          target_audience
+        FROM card 
+        WHERE id IN (${placeholders}) 
+        ORDER BY FIELD(id, ${placeholders})`,
+        [...cardIds, ...cardIds]
+      );
+      return cards.map(formatCard);
+    };
+
+    // 각 카테고리별로 카드 조회
+    const warmUpCards = await getCardsByIds(warmUpCardIds);
+    const mainCards = await getCardsByIds(mainCardIds);
+    const coolDownCards = await getCardsByIds(coolDownCardIds);
 
     res.json({
       success: true,
@@ -242,7 +236,9 @@ const getRecipeExercises = async (req, res) => {
       difficulty: recipe.difficulty || "",
       duration_min: recipe.duration_min || 0,
       card_count: cardCount,
-      data: formattedCards,
+      warm_up_cards: warmUpCards,
+      main_cards: mainCards,
+      cool_down_cards: coolDownCards,
     });
   } catch (error) {
     console.error("운동 목록 조회 오류:", error);
