@@ -6,6 +6,10 @@ const recipesController = require("../controllers/recipes.controller");
 // GET /api/recipes?page=1&limit=20&recipe_title=검색어
 router.get("/", recipesController.getAllRecipes);
 
+// 운동 영상 시청 기록 업데이트 (JWT 인증 필요)
+// POST /api/recipes/watch
+router.post("/watch", recipesController.updateVideoWatch);
+
 // 운동 목록 조회 (공개 API - 로그인 불필요)
 // GET /api/recipes/:id
 router.get("/:id", recipesController.getRecipeExercises);

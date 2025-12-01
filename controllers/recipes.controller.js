@@ -301,7 +301,98 @@ const getRecipeExercises = async (req, res) => {
   }
 };
 
+/**
+ * 운동 영상 시청 기록 업데이트 (JWT 인증 필요)
+ * POST /api/recipes/watch
+ * 카드를 클릭하여 운동 영상을 시청할 때 호출
+ */
+const updateVideoWatch = async (req, res) => {
+  try {
+    // JWT 토큰에서 사용자 ID 추출
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "로그인이 필요합니다.",
+      });
+    }
+
+    let userId;
+    try {
+      const jwt = require("jsonwebtoken");
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.id;
+
+      // 사용자 존재 확인
+      const [users] = await pool.execute("SELECT * FROM users WHERE id = ?", [
+        userId,
+      ]);
+      if (users.length === 0) {
+        return res.status(401).json({
+          success: false,
+          message: "유효하지 않은 사용자입니다.",
+        });
+      }
+    } catch (error) {
+      if (error.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          success: false,
+          message: "유효하지 않은 토큰입니다.",
+        });
+      }
+      if (error.name === "TokenExpiredError") {
+        return res.status(401).json({
+          success: false,
+          message: "토큰이 만료되었습니다.",
+        });
+      }
+      throw error;
+    }
+
+    // 오늘 날짜
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD 형식
+
+    // 오늘 날짜에 대한 기록이 있는지 확인
+    const [existingRecords] = await pool.execute(
+      "SELECT * FROM grass_history WHERE user_id = ? AND record_date = ?",
+      [userId, today]
+    );
+
+    if (existingRecords.length === 0) {
+      // 오늘 날짜에 기록이 없으면 새로 삽입
+      await pool.execute(
+        "INSERT INTO grass_history (user_id, attendance, video_watch, measurement, record_date) VALUES (?, ?, ?, ?, ?)",
+        [userId, "N", "Y", "N", today]
+      );
+      console.log(
+        `[grass_history] 영상 시청 기록 추가: user_id=${userId}, date=${today}`
+      );
+    } else {
+      // 이미 기록이 있으면 video_watch만 업데이트
+      await pool.execute(
+        "UPDATE grass_history SET video_watch = ? WHERE user_id = ? AND record_date = ?",
+        ["Y", userId, today]
+      );
+      console.log(
+        `[grass_history] 영상 시청 업데이트: user_id=${userId}, date=${today}`
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "영상 시청 기록이 업데이트되었습니다.",
+    });
+  } catch (error) {
+    console.error("영상 시청 기록 업데이트 오류:", error);
+    res.status(500).json({
+      success: false,
+      message: "영상 시청 기록 업데이트 중 오류가 발생했습니다.",
+    });
+  }
+};
+
 module.exports = {
   getAllRecipes,
   getRecipeExercises,
+  updateVideoWatch,
 };
