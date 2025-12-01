@@ -316,6 +316,40 @@ const createMeasurement = async (req, res) => {
     const mainCardList = await getCardsByIds(mainCardIds);
     const coolDownCardList = await getCardsByIds(coolDownCardIds);
 
+    // grass_history 테이블의 measurement 컬럼 업데이트
+    // today 변수는 이미 위에서 선언되었으므로 YYYY-MM-DD 형식으로 변환
+    const todayDateString = today.toISOString().split("T")[0]; // YYYY-MM-DD 형식
+    try {
+      // 오늘 날짜에 대한 기록이 있는지 확인
+      const [existingRecords] = await pool.execute(
+        "SELECT * FROM grass_history WHERE user_id = ? AND record_date = ?",
+        [userId, todayDateString]
+      );
+
+      if (existingRecords.length === 0) {
+        // 오늘 날짜에 기록이 없으면 새로 삽입
+        await pool.execute(
+          "INSERT INTO grass_history (user_id, attendance, video_watch, measurement, record_date) VALUES (?, ?, ?, ?, ?)",
+          [userId, "N", "N", "Y", todayDateString]
+        );
+        console.log(
+          `[grass_history] 측정 기록 추가: user_id=${userId}, date=${todayDateString}`
+        );
+      } else {
+        // 이미 기록이 있으면 measurement만 업데이트
+        await pool.execute(
+          "UPDATE grass_history SET measurement = ? WHERE user_id = ? AND record_date = ?",
+          ["Y", userId, todayDateString]
+        );
+        console.log(
+          `[grass_history] 측정 업데이트: user_id=${userId}, date=${todayDateString}`
+        );
+      }
+    } catch (error) {
+      // grass_history 업데이트 실패해도 측정 생성은 계속 진행
+      console.error("[grass_history] 측정 기록 업데이트 오류:", error);
+    }
+
     res.status(201).json({
       recipe_title: recipe.recipe_title || "",
       recipe_intro: recipe.recipe_intro || "",
