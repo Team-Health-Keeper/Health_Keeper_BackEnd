@@ -32,6 +32,7 @@ app.use('/api/recipes', require('./routes/recipes.routes'));
 app.use('/api/clubs', require('./routes/clubs.routes'));
 app.use('/api/sports-facilities', require('./routes/sportsFacilities.routes'));
 app.use('/api/mypage', require('./routes/mypage.routes'));
+app.use('/api/exercise', require('./routes/exercise.routes'));
 
 // Root route
 app.get('/', (req, res) => {

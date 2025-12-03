@@ -55,25 +55,89 @@ const updateBadgeInfo = async (userId, fitnessData) => {
     earnedBadges.push('2');
   }
 
-  // 3. 전체 상위 2% 체크 (유저별 최고 fitness_score 기준)
-  // 각 유저의 최고 점수를 기준으로 순위 계산
-  const [[rankResult]] = await pool.query(
+  // 3. 전체 상위 2% 체크 및 같은 등급 내 순위 계산
+  // 같은 체력 등급 유저들 간의 백분율로 계산
+  let topPercent = 100;
+  let rankResult = { userRank: 0, totalUsers: 0 };
+
+  if (fitnessData.fitnessGrade && fitnessData.fitnessScore) {
+    // 같은 등급 내에서 순위 계산
+    const [[gradeRankResult]] = await pool.query(
+      `SELECT 
+        (SELECT COUNT(DISTINCT user_id) 
+         FROM recipe 
+         WHERE fitness_grade = ? AND fitness_score > COALESCE(?, 0)) + 1 AS userRank,
+        (SELECT COUNT(DISTINCT user_id) 
+         FROM recipe 
+         WHERE fitness_grade = ? AND fitness_score IS NOT NULL) AS totalUsers`,
+      [
+        fitnessData.fitnessGrade,
+        fitnessData.fitnessScore,
+        fitnessData.fitnessGrade,
+      ]
+    );
+
+    rankResult = gradeRankResult;
+    topPercent =
+      rankResult.totalUsers > 0
+        ? Math.round((rankResult.userRank / rankResult.totalUsers) * 100)
+        : 100;
+
+    // 100%를 초과하지 않도록 보정
+    topPercent = Math.min(topPercent, 100);
+  }
+
+  // 전체 상위 2% 배지는 전체 기준으로 계산
+  // 등급 우선순위: 1등급(1) > 2등급(2) > 3등급(3) > 참가(4) > NULL(5)
+  // 같은 등급 내에서는 점수로 순위 결정
+  const myGrade = fitnessData.fitnessGrade || null;
+  const myScore = fitnessData.fitnessScore || 0;
+
+  const [[globalRankResult]] = await pool.query(
     `SELECT 
-      (SELECT COUNT(DISTINCT user_id) 
-       FROM recipe 
-       WHERE fitness_score > COALESCE(?, 0)) + 1 AS userRank,
+      (SELECT COUNT(DISTINCT r.user_id) 
+       FROM recipe r
+       INNER JOIN (
+         SELECT user_id, MAX(created_at) as latest
+         FROM recipe
+         WHERE fitness_score IS NOT NULL
+         GROUP BY user_id
+       ) latest_r ON r.user_id = latest_r.user_id AND r.created_at = latest_r.latest
+       WHERE 
+         -- 등급 우선순위로 비교 (낮은 숫자가 더 좋음)
+         CASE r.fitness_grade 
+           WHEN '1등급' THEN 1 
+           WHEN '2등급' THEN 2 
+           WHEN '3등급' THEN 3 
+           WHEN '참가' THEN 4 
+           ELSE 5 
+         END < CASE ? 
+           WHEN '1등급' THEN 1 
+           WHEN '2등급' THEN 2 
+           WHEN '3등급' THEN 3 
+           WHEN '참가' THEN 4 
+           ELSE 5 
+         END
+         OR (
+           -- 같은 등급이면 점수로 비교
+           r.fitness_grade = ? AND r.fitness_score > COALESCE(?, 0)
+         )
+      ) + 1 AS userRank,
       (SELECT COUNT(DISTINCT user_id) 
        FROM recipe 
        WHERE fitness_score IS NOT NULL) AS totalUsers`,
-    [fitnessData.fitnessScore || 0]
+    [myGrade, myGrade, myScore]
   );
 
-  const topPercent =
-    rankResult.totalUsers > 0
-      ? Math.round((rankResult.userRank / rankResult.totalUsers) * 100)
+  const globalTopPercent =
+    globalRankResult.totalUsers > 0
+      ? Math.round(
+          (globalRankResult.userRank / globalRankResult.totalUsers) * 100
+        )
       : 100;
 
-  if (topPercent <= 2) {
+  // 전체 기준 상위 2% 배지 체크
+  if (globalTopPercent <= 2) {
     earnedBadges.push('3');
   }
 
@@ -101,8 +165,23 @@ const updateBadgeInfo = async (userId, fitnessData) => {
     earnedBadges.push('5');
   }
 
-  // 6. 프리미엄 회원 체크 (현재 미사용 - is_premium 컬럼 없음)
-  // 추후 프리미엄 기능 추가 시 활성화
+  // 6. AI코치 1위 횟수 조회 (exercise_records에서 각 운동별 1위인 횟수)
+  const [[firstPlaceResult]] = await pool.query(
+    `SELECT COUNT(*) AS firstPlaceCount
+     FROM (
+       SELECT er.title
+       FROM exercise_records er
+       WHERE er.user_id = ?
+         AND er.average_accuracy = (
+           SELECT MAX(er2.average_accuracy)
+           FROM exercise_records er2
+           WHERE er2.title = er.title
+         )
+     ) AS first_places`,
+    [userId]
+  );
+
+  const firstPlaceCount = firstPlaceResult?.firstPlaceCount || 0;
 
   // badge_info 업데이트 (기존 레코드 확인 후 UPDATE 또는 INSERT)
   const badgeInfoStr = earnedBadges.join(',');
@@ -134,6 +213,7 @@ const updateBadgeInfo = async (userId, fitnessData) => {
     totalAttendance: attendanceResult.totalAttendance,
     totalMeasurement: measurementResult.totalMeasurement,
     rankData: rankResult,
+    firstPlaceCount,
   };
 };
 
@@ -287,6 +367,7 @@ const getMyPage = async (req, res) => {
           currentStreak: badgeResult.currentStreak,
         },
         badgeInfo: badgeResult.badgeInfo,
+        firstPlaceCount: badgeResult.firstPlaceCount,
         weeklyVideoWatch: weeklyVideoResult.weeklyVideoWatch,
         grass: formattedGrass,
         recipes: formattedRecipes,
