@@ -12,44 +12,178 @@ const openaiClient = process.env.OPENAI_API_KEY
   : null;
 
 /**
+ * 연령대별 측정 항목 필드 순서 정의
+ */
+const AGE_GROUP_FIELDS = {
+  유아기: [
+    "MESURE_AGE_CO", // features[0]에는 개월수가 들어감
+    "SEXDSTN_FLAG_CD",
+    "MESURE_IEM_001_VALUE",
+    "MESURE_IEM_002_VALUE",
+    "MESURE_IEM_007_VALUE",
+    "MESURE_IEM_008_VALUE",
+    "MESURE_IEM_009_VALUE",
+    "MESURE_IEM_012_VALUE",
+    "MESURE_IEM_018_VALUE",
+    "MESURE_IEM_020_VALUE",
+    "MESURE_IEM_022_VALUE",
+    "MESURE_IEM_028_VALUE",
+    "MESURE_IEM_050_VALUE",
+    "MESURE_IEM_051_VALUE",
+  ],
+  유소년기: [
+    "MESURE_AGE_CO",
+    "SEXDSTN_FLAG_CD",
+    "MESURE_IEM_001_VALUE",
+    "MESURE_IEM_002_VALUE",
+    "MESURE_IEM_004_VALUE",
+    "MESURE_IEM_007_VALUE",
+    "MESURE_IEM_008_VALUE",
+    "MESURE_IEM_009_VALUE",
+    "MESURE_IEM_012_VALUE",
+    "MESURE_IEM_018_VALUE",
+    "MESURE_IEM_020_VALUE",
+    "MESURE_IEM_022_VALUE",
+    "MESURE_IEM_028_VALUE",
+    "MESURE_IEM_042_VALUE",
+    "MESURE_IEM_043_VALUE",
+    "MESURE_IEM_044_VALUE",
+  ],
+  청소년기: [
+    "MESURE_AGE_CO",
+    "SEXDSTN_FLAG_CD",
+    "MESURE_IEM_001_VALUE",
+    "MESURE_IEM_002_VALUE",
+    "MESURE_IEM_003_VALUE",
+    "MESURE_IEM_005_VALUE",
+    "MESURE_IEM_006_VALUE",
+    "MESURE_IEM_007_VALUE",
+    "MESURE_IEM_008_VALUE",
+    "MESURE_IEM_009_VALUE",
+    "MESURE_IEM_010_VALUE",
+    "MESURE_IEM_012_VALUE",
+    "MESURE_IEM_013_VALUE",
+    "MESURE_IEM_014_VALUE",
+    "MESURE_IEM_015_VALUE",
+    "MESURE_IEM_016_VALUE",
+    "MESURE_IEM_017_VALUE",
+    "MESURE_IEM_018_VALUE",
+    "MESURE_IEM_020_VALUE",
+    "MESURE_IEM_022_VALUE",
+    "MESURE_IEM_028_VALUE",
+    "MESURE_IEM_030_VALUE",
+  ],
+  성인기: [
+    "MESURE_AGE_CO",
+    "SEXDSTN_FLAG_CD",
+    "MESURE_IEM_001_VALUE",
+    "MESURE_IEM_002_VALUE",
+    "MESURE_IEM_003_VALUE",
+    "MESURE_IEM_004_VALUE",
+    "MESURE_IEM_005_VALUE",
+    "MESURE_IEM_006_VALUE",
+    "MESURE_IEM_007_VALUE",
+    "MESURE_IEM_008_VALUE",
+    "MESURE_IEM_012_VALUE",
+    "MESURE_IEM_018_VALUE",
+    "MESURE_IEM_019_VALUE",
+    "MESURE_IEM_022_VALUE",
+    "MESURE_IEM_028_VALUE",
+    "MESURE_IEM_036_VALUE",
+    "MESURE_IEM_037_VALUE",
+    "MESURE_IEM_040_VALUE",
+  ],
+  어르신기: [
+    "MESURE_AGE_CO",
+    "SEXDSTN_FLAG_CD",
+    "MESURE_IEM_001_VALUE",
+    "MESURE_IEM_002_VALUE",
+    "MESURE_IEM_003_VALUE",
+    "MESURE_IEM_004_VALUE",
+    "MESURE_IEM_005_VALUE",
+    "MESURE_IEM_006_VALUE",
+    "MESURE_IEM_007_VALUE",
+    "MESURE_IEM_008_VALUE",
+    "MESURE_IEM_012_VALUE",
+    "MESURE_IEM_018_VALUE",
+    "MESURE_IEM_023_VALUE",
+    "MESURE_IEM_025_VALUE",
+    "MESURE_IEM_026_VALUE",
+    "MESURE_IEM_027_VALUE",
+    "MESURE_IEM_028_VALUE",
+    "MESURE_IEM_052_VALUE",
+  ],
+};
+
+/**
+ * 나이를 기준으로 연령대 판단
+ * @param {number} age - 나이
+ * @returns {string} 연령대 (유아기, 유소년기, 청소년기, 성인기, 어르신기)
+ */
+const determineAgeGroup = (age) => {
+  if (age < 7) return "유아기"; // 48~83개월 (4~6세)
+  if (age <= 12) return "유소년기"; // 11~12세
+  if (age <= 18) return "청소년기"; // 13~18세
+  if (age <= 64) return "성인기"; // 19~64세
+  return "어르신기"; // 65세 이상
+};
+
+/**
  * 프론트엔드 입력을 AI API 입력 형식으로 변환
  * @param {Object} measurementItems - 프론트엔드에서 받은 측정 항목 {measure_key: measure_value}
  * @param {number} age - 나이
  * @param {string} gender - 성별 (M 또는 F)
- * @returns {Object} AI API 입력 형식
+ * @returns {Object} AI API 입력 형식 { age: number, features: number[] }
  */
 const convertToAIInput = (measurementItems, age, gender) => {
-  const aiInput = {
-    MESURE_AGE_CO: age || null,
-    SEXDSTN_FLAG_CD: gender || null,
-  };
+  // 연령대 판단
+  const ageGroup = determineAgeGroup(age);
+  const fields = AGE_GROUP_FIELDS[ageGroup] || AGE_GROUP_FIELDS["성인기"];
 
+  // measure_key를 MESURE_IEM_XXX_VALUE 형식으로 매핑
+  const measurementMap = {};
   for (const [measureKey, measureValue] of Object.entries(measurementItems)) {
     const keyNum = parseInt(measureKey);
-
-    // measure_key: 53 (나이), 54 (성별)은 건너뛰기
-    if (keyNum === 53 || keyNum === 54) {
-      continue;
-    }
-
-    // measure_key: 55 (개월 수)는 MESURE_IEM_053_VALUE로 변환
-    if (keyNum === 55) {
-      aiInput["MESURE_IEM_053_VALUE"] = String(measureValue || "");
-      continue;
-    }
-
-    if (keyNum >= 1 && keyNum <= 52) {
-      if (keyNum === 11) {
-        continue;
-      }
-
+    
+    if (keyNum === 53 || measureKey === "age") {
+      measurementMap["MESURE_AGE_CO"] = parseFloat(measureValue) || age;
+    } else if (keyNum === 54 || measureKey === "gender") {
+      // 성별: M=0, F=1 (AI 서버 형식에 맞게 변환)
+      measurementMap["SEXDSTN_FLAG_CD"] = 
+        (measureValue === "M" || measureValue === "male") ? 0 : 1;
+    } else if (keyNum === 55) {
+      // 개월 수 - 유아기일 때 features[0]에 사용
+      measurementMap["MESURE_IEM_053_VALUE"] = parseFloat(measureValue) || 0;
+    } else if (keyNum >= 1 && keyNum <= 52 && keyNum !== 11) {
       const paddedKey = String(keyNum).padStart(3, "0");
       const fieldName = `MESURE_IEM_${paddedKey}_VALUE`;
-      aiInput[fieldName] = String(measureValue || "");
+      measurementMap[fieldName] = parseFloat(measureValue) || 0;
     }
   }
 
-  return aiInput;
+  // 성별이 measurementMap에 없으면 gender 파라미터 사용
+  if (!measurementMap["SEXDSTN_FLAG_CD"] && gender) {
+    measurementMap["SEXDSTN_FLAG_CD"] = (gender === "M") ? 0 : 1;
+  }
+
+  // 나이가 measurementMap에 없으면 age 파라미터 사용
+  if (!measurementMap["MESURE_AGE_CO"] && age) {
+    measurementMap["MESURE_AGE_CO"] = age;
+  }
+
+  // features 배열 생성
+  const features = fields.map((fieldName, index) => {
+    // 유아기이고 첫 번째 필드(MESURE_AGE_CO)일 때는 개월수 사용
+    if (ageGroup === "유아기" && index === 0 && measurementMap["MESURE_IEM_053_VALUE"]) {
+      return measurementMap["MESURE_IEM_053_VALUE"];
+    }
+    return measurementMap[fieldName] || 0;
+  });
+
+  return {
+    age: age || 30,
+    features: features,
+  };
 };
 
 /**
@@ -70,7 +204,7 @@ const generateRecipe = async (measurementData) => {
         );
 
         const response = await axios.post(
-          `${AI_SERVER_URL}/generate-recipe`,
+          `${AI_SERVER_URL}/predict`,
           aiInput,
           { timeout: 10000 }
         );
