@@ -58,7 +58,6 @@ const AGE_GROUP_FIELDS = {
     "MESURE_IEM_005_VALUE",
     "MESURE_IEM_006_VALUE",
     "MESURE_IEM_007_VALUE",
-    "MESURE_IEM_008_VALUE",
     "MESURE_IEM_009_VALUE",
     "MESURE_IEM_010_VALUE",
     "MESURE_IEM_012_VALUE",
@@ -144,13 +143,13 @@ const convertToAIInput = (measurementItems, age, gender) => {
   const measurementMap = {};
   for (const [measureKey, measureValue] of Object.entries(measurementItems)) {
     const keyNum = parseInt(measureKey);
-    
+
     if (keyNum === 53 || measureKey === "age") {
       measurementMap["MESURE_AGE_CO"] = parseFloat(measureValue) || age;
     } else if (keyNum === 54 || measureKey === "gender") {
       // 성별: M=0, F=1 (AI 서버 형식에 맞게 변환)
-      measurementMap["SEXDSTN_FLAG_CD"] = 
-        (measureValue === "M" || measureValue === "male") ? 0 : 1;
+      measurementMap["SEXDSTN_FLAG_CD"] =
+        measureValue === "M" || measureValue === "male" ? 0 : 1;
     } else if (keyNum === 55) {
       // 개월 수 - 유아기일 때 features[0]에 사용
       measurementMap["MESURE_IEM_053_VALUE"] = parseFloat(measureValue) || 0;
@@ -163,7 +162,7 @@ const convertToAIInput = (measurementItems, age, gender) => {
 
   // 성별이 measurementMap에 없으면 gender 파라미터 사용
   if (!measurementMap["SEXDSTN_FLAG_CD"] && gender) {
-    measurementMap["SEXDSTN_FLAG_CD"] = (gender === "M") ? 0 : 1;
+    measurementMap["SEXDSTN_FLAG_CD"] = gender === "M" ? 0 : 1;
   }
 
   // 나이가 measurementMap에 없으면 age 파라미터 사용
@@ -174,7 +173,11 @@ const convertToAIInput = (measurementItems, age, gender) => {
   // features 배열 생성
   const features = fields.map((fieldName, index) => {
     // 유아기이고 첫 번째 필드(MESURE_AGE_CO)일 때는 개월수 사용
-    if (ageGroup === "유아기" && index === 0 && measurementMap["MESURE_IEM_053_VALUE"]) {
+    if (
+      ageGroup === "유아기" &&
+      index === 0 &&
+      measurementMap["MESURE_IEM_053_VALUE"]
+    ) {
       return measurementMap["MESURE_IEM_053_VALUE"];
     }
     return measurementMap[fieldName] || 0;
@@ -203,11 +206,9 @@ const generateRecipe = async (measurementData) => {
           measurementData.gender
         );
 
-        const response = await axios.post(
-          `${AI_SERVER_URL}/predict`,
-          aiInput,
-          { timeout: 10000 }
-        );
+        const response = await axios.post(`${AI_SERVER_URL}/predict`, aiInput, {
+          timeout: 10000,
+        });
 
         const groupExercise = response.data.group_exercise || {};
         const coawLogit = response.data.coaw_logit || [];
