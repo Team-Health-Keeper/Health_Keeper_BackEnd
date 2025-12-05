@@ -197,8 +197,11 @@ const convertToAIInput = (measurementItems, age, gender) => {
 const generateRecipe = async (measurementData) => {
   console.log("[AI Service] generateRecipe 시작");
   console.log("[AI Service] AI_SERVER_URL:", AI_SERVER_URL || "미설정");
-  console.log("[AI Service] OpenAI 클라이언트:", openaiClient ? "설정됨" : "미설정");
-  
+  console.log(
+    "[AI Service] OpenAI 클라이언트:",
+    openaiClient ? "설정됨" : "미설정"
+  );
+
   try {
     // AI 서버가 설정되어 있으면 호출 (현재는 비활성화)
     if (AI_SERVER_URL) {
@@ -211,17 +214,23 @@ const generateRecipe = async (measurementData) => {
           measurementData.age,
           measurementData.gender
         );
-        
+
         console.log("[AI Service] 변환된 입력 데이터:");
         console.log("[AI Service] - age:", aiInput.age);
         console.log("[AI Service] - features 길이:", aiInput.features?.length);
-        console.log("[AI Service] - features:", JSON.stringify(aiInput.features));
+        console.log(
+          "[AI Service] - features:",
+          JSON.stringify(aiInput.features)
+        );
 
-        console.log("[AI Service] AI 서버 POST 요청:", `${AI_SERVER_URL}/predict`);
+        console.log(
+          "[AI Service] AI 서버 POST 요청:",
+          `${AI_SERVER_URL}/predict`
+        );
         const response = await axios.post(`${AI_SERVER_URL}/predict`, aiInput, {
           timeout: 10000,
         });
-        
+
         console.log("[AI Service] AI 서버 응답 받음");
         console.log("[AI Service] 응답 상태:", response.status);
         console.log("[AI Service] 응답 데이터:", JSON.stringify(response.data));
@@ -249,12 +258,12 @@ const generateRecipe = async (measurementData) => {
         };
         const fitnessGrade = gradeMap[maxIndex] || "참가";
         const fitnessScore = maxValue;
-        
+
         console.log("[AI Service] 체력 등급 계산:");
         console.log("[AI Service] - maxIndex:", maxIndex);
         console.log("[AI Service] - maxValue:", maxValue);
         console.log("[AI Service] - fitnessGrade:", fitnessGrade);
-        
+
         const exerciseData = {
           준비운동: warmUpExercises,
           본운동: mainExercises,
@@ -322,7 +331,7 @@ const generateRecipe = async (measurementData) => {
             console.log("[AI Service] OpenAI 응답 받음");
             const content = openaiResponse.choices[0].message.content.trim();
             console.log("[AI Service] OpenAI 응답 내용:", content);
-            
+
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]);
@@ -345,7 +354,7 @@ const generateRecipe = async (measurementData) => {
         console.log("[AI Service] - recipeTitle:", recipeTitle);
         console.log("[AI Service] - difficulty:", difficulty);
         console.log("[AI Service] - fitnessGrade:", fitnessGrade);
-        
+
         return {
           categoryId: 1,
           recipeTitle,
@@ -363,8 +372,14 @@ const generateRecipe = async (measurementData) => {
         console.error("[AI Service] 오류 메시지:", aiServerError.message);
         console.error("[AI Service] 오류 스택:", aiServerError.stack);
         if (aiServerError.response) {
-          console.error("[AI Service] 응답 상태:", aiServerError.response.status);
-          console.error("[AI Service] 응답 데이터:", aiServerError.response.data);
+          console.error(
+            "[AI Service] 응답 상태:",
+            aiServerError.response.status
+          );
+          console.error(
+            "[AI Service] 응답 데이터:",
+            aiServerError.response.data
+          );
         }
         console.log("[AI Service] OpenAI 전용 모드로 전환");
         return await generateRecipeWithOpenAIOnly(measurementData);

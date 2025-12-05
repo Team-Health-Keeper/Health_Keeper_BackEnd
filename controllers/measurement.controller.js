@@ -31,9 +31,15 @@ const parseVideoDuration = (durationStr) => {
 const createMeasurement = async (req, res) => {
   console.log("=== [체력 측정] 시작 ===");
   console.log("[체력 측정] 환경:", process.env.NODE_ENV || "development");
-  console.log("[체력 측정] AI 서버 URL:", process.env.AI_SERVER_URL || "미설정");
-  console.log("[체력 측정] OpenAI API Key:", process.env.OPENAI_API_KEY ? "설정됨" : "미설정");
-  
+  console.log(
+    "[체력 측정] AI 서버 URL:",
+    process.env.AI_SERVER_URL || "미설정"
+  );
+  console.log(
+    "[체력 측정] OpenAI API Key:",
+    process.env.OPENAI_API_KEY ? "설정됨" : "미설정"
+  );
+
   try {
     const userId = req.user.id;
     const reqArr = req.body.req_arr || req.body.measurements;
@@ -97,12 +103,19 @@ const createMeasurement = async (req, res) => {
       gender = "M";
     }
 
-    console.log("[체력 측정] 처리된 데이터 - 나이:", age, "성별:", gender, "개월수:", months);
+    console.log(
+      "[체력 측정] 처리된 데이터 - 나이:",
+      age,
+      "성별:",
+      gender,
+      "개월수:",
+      months
+    );
 
     // 연령대 판단
     const determinedAgeGroup = getAgeGroup(age);
     const ageGroupInfo = getMeasurementItems(determinedAgeGroup);
-    
+
     console.log("[체력 측정] 연령대:", determinedAgeGroup);
 
     // 필수 항목 확인 (신장, 체중)
@@ -150,7 +163,10 @@ const createMeasurement = async (req, res) => {
 
     // 1. 각 측정 항목별로 별도의 행으로 저장
     const insertedMeasurementIds = [];
-    console.log("[체력 측정] DB 저장 시작 - 항목 수:", Object.keys(processedItems).length);
+    console.log(
+      "[체력 측정] DB 저장 시작 - 항목 수:",
+      Object.keys(processedItems).length
+    );
 
     // 각 측정 항목별로 행 삽입
     for (const [measurementCode, value] of Object.entries(processedItems)) {
@@ -191,7 +207,7 @@ const createMeasurement = async (req, res) => {
     const warmUpExercises = aiResponse.warmUpExercises || [];
     const mainExercises = aiResponse.mainExercises || [];
     const coolDownExercises = aiResponse.coolDownExercises || [];
-    
+
     console.log("[체력 측정] 운동 목록:");
     console.log("[체력 측정] - 준비운동:", warmUpExercises.length + "개");
     console.log("[체력 측정] - 본운동:", mainExercises.length + "개");
@@ -270,7 +286,7 @@ const createMeasurement = async (req, res) => {
       warmUpDuration + mainDuration + coolDownDuration;
 
     const durationMin = Math.round(totalDurationSeconds / 60);
-    
+
     console.log("[체력 측정] 총 소요 시간:", durationMin + "분");
     console.log("[체력 측정] Recipe DB 저장 시작...");
 
@@ -397,6 +413,109 @@ const createMeasurement = async (req, res) => {
       console.error("[grass_history] 측정 기록 업데이트 오류:", error);
     }
 
+    // percentile 계산: fitness_score를 기반으로 전체 사용자와 비교
+    let percentile = null;
+    try {
+      const [percentileResult] = await pool.execute(
+        `SELECT 
+          COUNT(*) as total_count,
+          SUM(CASE WHEN fitness_score <= ? THEN 1 ELSE 0 END) as lower_count
+        FROM recipe 
+        WHERE fitness_score IS NOT NULL`,
+        [recipe.fitness_score || 0]
+      );
+
+      if (percentileResult.length > 0 && percentileResult[0].total_count > 0) {
+        const totalCount = percentileResult[0].total_count;
+        const lowerCount = percentileResult[0].lower_count;
+        // 상위 percentile 계산: (전체 - 자신보다 낮은 점수) / 전체 * 100
+        percentile = Math.round(((totalCount - lowerCount) / totalCount) * 100);
+        // 최소 1%, 최대 99%로 제한
+        percentile = Math.max(1, Math.min(99, percentile));
+      } else {
+        // 데이터가 없으면 기본값 사용
+        percentile = 35;
+      }
+    } catch (error) {
+      console.error("[체력 측정] percentile 계산 오류:", error);
+      percentile = 35; // 기본값
+    }
+
+    // 강점 및 개선필요 항목 분석
+    const strengths = [];
+    const weaknesses = [];
+
+    try {
+      // 측정 항목 분석 (간단한 로직)
+      // 근력 관련 항목 (악력)
+      const gripStrength = parseFloat(
+        processedItems["7"] || processedItems["8"] || "0"
+      );
+      if (gripStrength > 0) {
+        // 연령대별 기준은 나중에 추가 가능, 일단 간단한 로직
+        if (gripStrength >= 30) {
+          strengths.push({ category: "근력", level: "우수" });
+        }
+      }
+
+      // 지구력 관련 항목 (왕복오래달리기)
+      const endurance = parseFloat(processedItems["20"] || "0");
+      if (endurance > 0) {
+        if (endurance >= 20) {
+          strengths.push({ category: "지구력", level: "양호" });
+        } else if (endurance < 10) {
+          weaknesses.push({ category: "지구력", level: "보통" });
+        }
+      }
+
+      // 유연성 관련 항목 (앉아윗몸앞으로굽히기)
+      const flexibility = parseFloat(processedItems["12"] || "0");
+      if (flexibility > 0) {
+        if (flexibility < 10) {
+          weaknesses.push({ category: "유연성", level: "보통" });
+        }
+      } else {
+        // 유연성 데이터가 없으면 기본적으로 개선 필요로 표시
+        weaknesses.push({ category: "유연성", level: "보통" });
+      }
+
+      // 순발력 관련 항목 (제자리 멀리뛰기)
+      const agility = parseFloat(processedItems["22"] || "0");
+      if (agility > 0) {
+        if (agility < 150) {
+          weaknesses.push({ category: "순발력", level: "보통" });
+        }
+      } else {
+        // 순발력 데이터가 없으면 기본적으로 개선 필요로 표시
+        weaknesses.push({ category: "순발력", level: "보통" });
+      }
+
+      // 기본값 설정 (데이터가 부족한 경우)
+      if (strengths.length === 0) {
+        if (gripStrength > 0) {
+          strengths.push({ category: "근력", level: "우수" });
+        }
+        if (endurance > 0) {
+          strengths.push({ category: "지구력", level: "양호" });
+        }
+      }
+
+      if (weaknesses.length === 0) {
+        weaknesses.push({ category: "유연성", level: "보통" });
+        weaknesses.push({ category: "순발력", level: "보통" });
+      }
+    } catch (error) {
+      console.error("[체력 측정] 강점/개선필요 분석 오류:", error);
+      // 기본값
+      strengths.push({ category: "근력", level: "우수" });
+      strengths.push({ category: "지구력", level: "양호" });
+      weaknesses.push({ category: "유연성", level: "보통" });
+      weaknesses.push({ category: "순발력", level: "보통" });
+    }
+
+    console.log("[체력 측정] percentile:", percentile);
+    console.log("[체력 측정] strengths:", strengths);
+    console.log("[체력 측정] weaknesses:", weaknesses);
     console.log("[체력 측정] 응답 전송 준비 완료");
     console.log("=== [체력 측정] 완료 ===\n");
 
@@ -406,6 +525,9 @@ const createMeasurement = async (req, res) => {
       difficulty: recipe.difficulty || "",
       duration_min: recipe.duration_min || 0,
       fitness_grade: recipe.fitness_grade || "",
+      fitness_percentile: percentile,
+      strengths: strengths,
+      weaknesses: weaknesses,
       warm_up_card_list: warmUpCardList,
       main_card_list: mainCardList,
       cool_down_card_list: coolDownCardList,
@@ -420,7 +542,7 @@ const createMeasurement = async (req, res) => {
       console.error("[체력 측정] API 응답 데이터:", error.response.data);
     }
     console.error("=== [체력 측정] 오류 끝 ===\n");
-    
+
     res.status(500).json({
       success: false,
       message: error.message || "체력 측정 생성 중 오류가 발생했습니다.",
