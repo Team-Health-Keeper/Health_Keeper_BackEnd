@@ -29,12 +29,21 @@ const parseVideoDuration = (durationStr) => {
 
 // 체력 측정 정보 입력 및 AI 레시피 생성
 const createMeasurement = async (req, res) => {
+  console.log("=== [체력 측정] 시작 ===");
+  console.log("[체력 측정] 환경:", process.env.NODE_ENV || "development");
+  console.log("[체력 측정] AI 서버 URL:", process.env.AI_SERVER_URL || "미설정");
+  console.log("[체력 측정] OpenAI API Key:", process.env.OPENAI_API_KEY ? "설정됨" : "미설정");
+  
   try {
     const userId = req.user.id;
     const reqArr = req.body.req_arr || req.body.measurements;
 
+    console.log("[체력 측정] User ID:", userId);
+    console.log("[체력 측정] 입력 데이터 개수:", reqArr?.length || 0);
+
     // 입력 검증
     if (!reqArr || !Array.isArray(reqArr) || reqArr.length === 0) {
+      console.error("[체력 측정] 입력 검증 실패: 측정 항목 없음");
       return res.status(400).json({
         success: false,
         message:
@@ -88,9 +97,13 @@ const createMeasurement = async (req, res) => {
       gender = "M";
     }
 
+    console.log("[체력 측정] 처리된 데이터 - 나이:", age, "성별:", gender, "개월수:", months);
+
     // 연령대 판단
     const determinedAgeGroup = getAgeGroup(age);
     const ageGroupInfo = getMeasurementItems(determinedAgeGroup);
+    
+    console.log("[체력 측정] 연령대:", determinedAgeGroup);
 
     // 필수 항목 확인 (신장, 체중)
     const requiredItems = ageGroupInfo.required || ["1", "2"];
@@ -99,6 +112,7 @@ const createMeasurement = async (req, res) => {
     );
 
     if (!hasRequired) {
+      console.error("[체력 측정] 필수 항목 누락:", requiredItems);
       return res.status(400).json({
         success: false,
         message: `필수 측정 항목이 누락되었습니다. (${
@@ -106,6 +120,8 @@ const createMeasurement = async (req, res) => {
         }, ${ageGroupInfo.items[requiredItems[1]]})`,
       });
     }
+
+    console.log("[체력 측정] 필수 항목 검증 통과");
 
     // 측정 세션 UUID 생성 (YYYYMMDD0001 형식)
     const today = new Date();
@@ -130,8 +146,11 @@ const createMeasurement = async (req, res) => {
     );
     const measurementUUID = `${datePrefix}${sequenceNumber}`;
 
+    console.log("[체력 측정] 측정 UUID 생성:", measurementUUID);
+
     // 1. 각 측정 항목별로 별도의 행으로 저장
     const insertedMeasurementIds = [];
+    console.log("[체력 측정] DB 저장 시작 - 항목 수:", Object.keys(processedItems).length);
 
     // 각 측정 항목별로 행 삽입
     for (const [measurementCode, value] of Object.entries(processedItems)) {
@@ -149,6 +168,9 @@ const createMeasurement = async (req, res) => {
     const measurementId =
       insertedMeasurementIds.length > 0 ? insertedMeasurementIds[0] : null;
 
+    console.log("[체력 측정] DB 저장 완료 - Measurement ID:", measurementId);
+    console.log("[체력 측정] AI 서버 호출 시작...");
+
     // 2. AI 서버 호출 (레시피 생성)
     const aiResponse = await aiService.generateRecipe({
       ageGroup: determinedAgeGroup,
@@ -160,10 +182,20 @@ const createMeasurement = async (req, res) => {
       measurementItems: processedItems,
     });
 
+    console.log("[체력 측정] AI 서버 응답 받음");
+    console.log("[체력 측정] - 체력 등급:", aiResponse.fitnessGrade);
+    console.log("[체력 측정] - 체력 점수:", aiResponse.fitnessScore);
+    console.log("[체력 측정] - 난이도:", aiResponse.difficulty);
+
     // 3. AI 서버에서 받은 운동 이름들을 card 테이블과 매칭하여 ID 찾기
     const warmUpExercises = aiResponse.warmUpExercises || [];
     const mainExercises = aiResponse.mainExercises || [];
     const coolDownExercises = aiResponse.coolDownExercises || [];
+    
+    console.log("[체력 측정] 운동 목록:");
+    console.log("[체력 측정] - 준비운동:", warmUpExercises.length + "개");
+    console.log("[체력 측정] - 본운동:", mainExercises.length + "개");
+    console.log("[체력 측정] - 정리운동:", coolDownExercises.length + "개");
 
     const convertExerciseNamesToCardIds = async (exerciseNames) => {
       const cardIds = [];
@@ -207,6 +239,11 @@ const createMeasurement = async (req, res) => {
     const mainCardsString = uniqueMainCardIds.join(",");
     const coolDownCardsString = uniqueCoolDownCardIds.join(",");
 
+    console.log("[체력 측정] 카드 ID 매칭 완료:");
+    console.log("[체력 측정] - 준비운동 카드:", warmUpCardsString || "없음");
+    console.log("[체력 측정] - 본운동 카드:", mainCardsString || "없음");
+    console.log("[체력 측정] - 정리운동 카드:", coolDownCardsString || "없음");
+
     // duration 계산: 각 카테고리별로 계산 후 합산 (카테고리 간 중복 허용)
     const calculateCategoryDuration = async (cardIds) => {
       if (cardIds.length === 0) return 0;
@@ -233,6 +270,10 @@ const createMeasurement = async (req, res) => {
       warmUpDuration + mainDuration + coolDownDuration;
 
     const durationMin = Math.round(totalDurationSeconds / 60);
+    
+    console.log("[체력 측정] 총 소요 시간:", durationMin + "분");
+    console.log("[체력 측정] Recipe DB 저장 시작...");
+
     const [recipeResult] = await pool.execute(
       `INSERT INTO recipe (
         user_id,
@@ -263,6 +304,7 @@ const createMeasurement = async (req, res) => {
     );
 
     const recipeId = recipeResult.insertId;
+    console.log("[체력 측정] Recipe 저장 완료 - Recipe ID:", recipeId);
 
     // 5. 저장된 레시피 조회 및 card 테이블에서 카드 정보 가져오기
     const [recipes] = await pool.execute(
@@ -355,6 +397,9 @@ const createMeasurement = async (req, res) => {
       console.error("[grass_history] 측정 기록 업데이트 오류:", error);
     }
 
+    console.log("[체력 측정] 응답 전송 준비 완료");
+    console.log("=== [체력 측정] 완료 ===\n");
+
     res.status(201).json({
       recipe_title: recipe.recipe_title || "",
       recipe_intro: recipe.recipe_intro || "",
@@ -366,7 +411,16 @@ const createMeasurement = async (req, res) => {
       cool_down_card_list: coolDownCardList,
     });
   } catch (error) {
-    console.error("체력 측정 생성 오류:", error);
+    console.error("=== [체력 측정] 오류 발생 ===");
+    console.error("[체력 측정] 오류 메시지:", error.message);
+    console.error("[체력 측정] 오류 스택:", error.stack);
+    console.error("[체력 측정] 오류 타입:", error.constructor.name);
+    if (error.response) {
+      console.error("[체력 측정] API 응답 상태:", error.response.status);
+      console.error("[체력 측정] API 응답 데이터:", error.response.data);
+    }
+    console.error("=== [체력 측정] 오류 끝 ===\n");
+    
     res.status(500).json({
       success: false,
       message: error.message || "체력 측정 생성 중 오류가 발생했습니다.",
