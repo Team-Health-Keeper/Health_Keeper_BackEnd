@@ -213,6 +213,28 @@ const createMeasurement = async (req, res) => {
     console.log("[체력 측정] - 본운동:", mainExercises.length + "개");
     console.log("[체력 측정] - 정리운동:", coolDownExercises.length + "개");
 
+    // 연령대를 target_audience로 매핑
+    // DDL에 따르면 target_audience는: 유아기, 아동기, 청소년기, 성인, 노인
+    // ageGroups.js에서는: 유아기, 유소년, 청소년, 성인, 어르신
+    const mapAgeGroupToTargetAudience = (ageGroup) => {
+      const mapping = {
+        유아기: "유아기",
+        유소년: "아동기", // 유소년 -> 아동기
+        청소년: "청소년기", // 청소년 -> 청소년기
+        성인: "성인",
+        어르신: "노인", // 어르신 -> 노인
+      };
+      return mapping[ageGroup] || "성인";
+    };
+
+    const targetAudience = mapAgeGroupToTargetAudience(determinedAgeGroup);
+    console.log(
+      "[체력 측정] 연령대 -> target_audience:",
+      determinedAgeGroup,
+      "->",
+      targetAudience
+    );
+
     const convertExerciseNamesToCardIds = async (exerciseNames) => {
       const cardIds = [];
 
@@ -221,13 +243,19 @@ const createMeasurement = async (req, res) => {
           continue;
         }
 
+        // exercise_name과 target_audience 모두 일치하는 카드만 선택
         const [matchedCards] = await pool.execute(
-          `SELECT id FROM card WHERE exercise_name = ? LIMIT 1`,
-          [exerciseName]
+          `SELECT id FROM card WHERE exercise_name = ? AND target_audience = ? LIMIT 1`,
+          [exerciseName, targetAudience]
         );
 
         if (matchedCards.length > 0) {
           cardIds.push(matchedCards[0].id);
+        } else {
+          // target_audience가 일치하지 않으면 경고 로그 출력
+          console.warn(
+            `[체력 측정] 카드 매칭 실패: exercise_name="${exerciseName}", target_audience="${targetAudience}"에 해당하는 카드를 찾을 수 없습니다.`
+          );
         }
       }
 
