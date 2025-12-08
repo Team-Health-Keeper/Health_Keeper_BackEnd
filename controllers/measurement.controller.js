@@ -293,18 +293,42 @@ const createMeasurement = async (req, res) => {
     const uniqueMainCardIds = removeDuplicatesInArray(mainCardIdArray);
     const uniqueCoolDownCardIds = removeDuplicatesInArray(coolDownCardIdArray);
 
-    const warmUpCardsString = uniqueWarmUpCardIds.length > 0 ? uniqueWarmUpCardIds.join(",") : "";
-    const mainCardsString = uniqueMainCardIds.length > 0 ? uniqueMainCardIds.join(",") : "";
-    const coolDownCardsString = uniqueCoolDownCardIds.length > 0 ? uniqueCoolDownCardIds.join(",") : "";
+    const warmUpCardsString =
+      uniqueWarmUpCardIds.length > 0 ? uniqueWarmUpCardIds.join(",") : "";
+    const mainCardsString =
+      uniqueMainCardIds.length > 0 ? uniqueMainCardIds.join(",") : "";
+    const coolDownCardsString =
+      uniqueCoolDownCardIds.length > 0 ? uniqueCoolDownCardIds.join(",") : "";
 
     console.log("[체력 측정] 카드 ID 매칭 완료:");
-    console.log("[체력 측정] - 준비운동 카드 개수:", uniqueWarmUpCardIds.length, "->", warmUpCardsString || "없음");
-    console.log("[체력 측정] - 본운동 카드 개수:", uniqueMainCardIds.length, "->", mainCardsString || "없음");
-    console.log("[체력 측정] - 정리운동 카드 개수:", uniqueCoolDownCardIds.length, "->", coolDownCardsString || "없음");
+    console.log(
+      "[체력 측정] - 준비운동 카드 개수:",
+      uniqueWarmUpCardIds.length,
+      "->",
+      warmUpCardsString || "없음"
+    );
+    console.log(
+      "[체력 측정] - 본운동 카드 개수:",
+      uniqueMainCardIds.length,
+      "->",
+      mainCardsString || "없음"
+    );
+    console.log(
+      "[체력 측정] - 정리운동 카드 개수:",
+      uniqueCoolDownCardIds.length,
+      "->",
+      coolDownCardsString || "없음"
+    );
 
     // 카드가 하나도 매칭되지 않은 경우 경고
-    if (uniqueWarmUpCardIds.length === 0 && uniqueMainCardIds.length === 0 && uniqueCoolDownCardIds.length === 0) {
-      console.error("[체력 측정] 경고: 모든 카드 매칭 실패! 레시피에 카드가 없습니다.");
+    if (
+      uniqueWarmUpCardIds.length === 0 &&
+      uniqueMainCardIds.length === 0 &&
+      uniqueCoolDownCardIds.length === 0
+    ) {
+      console.error(
+        "[체력 측정] 경고: 모든 카드 매칭 실패! 레시피에 카드가 없습니다."
+      );
     }
 
     // duration 계산: 각 카테고리별로 계산 후 합산 (카테고리 간 중복 허용)
@@ -337,9 +361,24 @@ const createMeasurement = async (req, res) => {
     console.log("[체력 측정] 총 소요 시간:", durationMin + "분");
     console.log("[체력 측정] Recipe DB 저장 시작...");
     console.log("[체력 측정] 저장할 카드 값:");
-    console.log("[체력 측정] - warm_up_cards:", warmUpCardsString || "(빈 문자열)", "타입:", typeof warmUpCardsString);
-    console.log("[체력 측정] - main_cards:", mainCardsString || "(빈 문자열)", "타입:", typeof mainCardsString);
-    console.log("[체력 측정] - cool_down_cards:", coolDownCardsString || "(빈 문자열)", "타입:", typeof coolDownCardsString);
+    console.log(
+      "[체력 측정] - warm_up_cards:",
+      warmUpCardsString || "(빈 문자열)",
+      "타입:",
+      typeof warmUpCardsString
+    );
+    console.log(
+      "[체력 측정] - main_cards:",
+      mainCardsString || "(빈 문자열)",
+      "타입:",
+      typeof mainCardsString
+    );
+    console.log(
+      "[체력 측정] - cool_down_cards:",
+      coolDownCardsString || "(빈 문자열)",
+      "타입:",
+      typeof coolDownCardsString
+    );
 
     // 빈 문자열이 아닌지 확인 (NOT NULL 제약조건을 위해)
     const finalWarmUpCards = warmUpCardsString || "";
@@ -385,12 +424,27 @@ const createMeasurement = async (req, res) => {
     );
 
     const recipe = recipes[0];
-    
+
     // 저장된 값 확인
     console.log("[체력 측정] 저장된 레시피에서 조회한 카드 값:");
-    console.log("[체력 측정] - warm_up_cards:", recipe.warm_up_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.warm_up_cards);
-    console.log("[체력 측정] - main_cards:", recipe.main_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.main_cards);
-    console.log("[체력 측정] - cool_down_cards:", recipe.cool_down_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.cool_down_cards);
+    console.log(
+      "[체력 측정] - warm_up_cards:",
+      recipe.warm_up_cards || "(NULL 또는 빈 문자열)",
+      "타입:",
+      typeof recipe.warm_up_cards
+    );
+    console.log(
+      "[체력 측정] - main_cards:",
+      recipe.main_cards || "(NULL 또는 빈 문자열)",
+      "타입:",
+      typeof recipe.main_cards
+    );
+    console.log(
+      "[체력 측정] - cool_down_cards:",
+      recipe.cool_down_cards || "(NULL 또는 빈 문자열)",
+      "타입:",
+      typeof recipe.cool_down_cards
+    );
 
     const getAllCardIds = (cardsString) => {
       if (!cardsString) return [];
@@ -440,6 +494,35 @@ const createMeasurement = async (req, res) => {
     const warmUpCardList = await getCardsByIds(warmUpCardIds);
     const mainCardList = await getCardsByIds(mainCardIds);
     const coolDownCardList = await getCardsByIds(coolDownCardIds);
+
+    // 본운동 카드에서 fitness_category 추출하여 개선필요 항목 생성
+    const extractWeaknessesFromMainCards = (mainCards) => {
+      const weaknesses = [];
+      const fitnessCategories = new Set();
+
+      // 본운동 카드들의 fitness_category 수집 (중복 제거)
+      mainCards.forEach((card) => {
+        if (card.fitness_category && card.fitness_category.trim() !== "") {
+          fitnessCategories.add(card.fitness_category.trim());
+        }
+      });
+
+      // fitness_category를 개선필요 항목으로 변환
+      fitnessCategories.forEach((category) => {
+        weaknesses.push({
+          category: category,
+          level: "보통", // 기본값
+        });
+      });
+
+      console.log(
+        "[체력 측정] 본운동에서 추출한 fitness_category:",
+        Array.from(fitnessCategories)
+      );
+      console.log("[체력 측정] 생성된 개선필요 항목:", weaknesses);
+
+      return weaknesses;
+    };
 
     // grass_history 테이블의 measurement 컬럼 업데이트
     // today 변수는 이미 위에서 선언되었으므로 YYYY-MM-DD 형식으로 변환
@@ -505,7 +588,7 @@ const createMeasurement = async (req, res) => {
 
     // 강점 및 개선필요 항목 분석
     const strengths = [];
-    const weaknesses = [];
+    let weaknesses = [];
 
     try {
       // 측정 항목 분석 (간단한 로직)
@@ -525,31 +608,7 @@ const createMeasurement = async (req, res) => {
       if (endurance > 0) {
         if (endurance >= 20) {
           strengths.push({ category: "지구력", level: "양호" });
-        } else if (endurance < 10) {
-          weaknesses.push({ category: "지구력", level: "보통" });
         }
-      }
-
-      // 유연성 관련 항목 (앉아윗몸앞으로굽히기)
-      const flexibility = parseFloat(processedItems["12"] || "0");
-      if (flexibility > 0) {
-        if (flexibility < 10) {
-          weaknesses.push({ category: "유연성", level: "보통" });
-        }
-      } else {
-        // 유연성 데이터가 없으면 기본적으로 개선 필요로 표시
-        weaknesses.push({ category: "유연성", level: "보통" });
-      }
-
-      // 순발력 관련 항목 (제자리 멀리뛰기)
-      const agility = parseFloat(processedItems["22"] || "0");
-      if (agility > 0) {
-        if (agility < 150) {
-          weaknesses.push({ category: "순발력", level: "보통" });
-        }
-      } else {
-        // 순발력 데이터가 없으면 기본적으로 개선 필요로 표시
-        weaknesses.push({ category: "순발력", level: "보통" });
       }
 
       // 기본값 설정 (데이터가 부족한 경우)
@@ -561,18 +620,32 @@ const createMeasurement = async (req, res) => {
           strengths.push({ category: "지구력", level: "양호" });
         }
       }
+    } catch (error) {
+      console.error("[체력 측정] 강점 분석 오류:", error);
+      // 기본값
+      strengths.push({ category: "근력", level: "우수" });
+      strengths.push({ category: "지구력", level: "양호" });
+    }
 
+    // 개선필요 항목은 본운동 카드의 fitness_category에서 추출
+    try {
+      weaknesses = extractWeaknessesFromMainCards(mainCardList);
+
+      // 본운동 카드가 없거나 fitness_category가 없는 경우 기본값
       if (weaknesses.length === 0) {
+        console.warn(
+          "[체력 측정] 본운동 카드에서 fitness_category를 추출할 수 없어 기본값 사용"
+        );
         weaknesses.push({ category: "유연성", level: "보통" });
         weaknesses.push({ category: "순발력", level: "보통" });
       }
     } catch (error) {
-      console.error("[체력 측정] 강점/개선필요 분석 오류:", error);
+      console.error("[체력 측정] 개선필요 항목 추출 오류:", error);
       // 기본값
-      strengths.push({ category: "근력", level: "우수" });
-      strengths.push({ category: "지구력", level: "양호" });
-      weaknesses.push({ category: "유연성", level: "보통" });
-      weaknesses.push({ category: "순발력", level: "보통" });
+      weaknesses = [
+        { category: "유연성", level: "보통" },
+        { category: "순발력", level: "보통" },
+      ];
     }
 
     console.log("[체력 측정] percentile:", percentile);
