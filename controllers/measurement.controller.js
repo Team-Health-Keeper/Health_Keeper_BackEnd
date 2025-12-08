@@ -243,18 +243,32 @@ const createMeasurement = async (req, res) => {
           continue;
         }
 
-        // exercise_name과 target_audience 모두 일치하는 카드만 선택
-        const [matchedCards] = await pool.execute(
+        // 먼저 exercise_name과 target_audience 모두 일치하는 카드 찾기
+        let [matchedCards] = await pool.execute(
           `SELECT id FROM card WHERE exercise_name = ? AND target_audience = ? LIMIT 1`,
           [exerciseName, targetAudience]
         );
 
+        // target_audience가 일치하지 않으면, exercise_name만으로 매칭 시도 (fallback)
+        if (matchedCards.length === 0) {
+          console.warn(
+            `[체력 측정] target_audience="${targetAudience}"로 매칭 실패, exercise_name만으로 재시도: "${exerciseName}"`
+          );
+          [matchedCards] = await pool.execute(
+            `SELECT id FROM card WHERE exercise_name = ? LIMIT 1`,
+            [exerciseName]
+          );
+        }
+
         if (matchedCards.length > 0) {
           cardIds.push(matchedCards[0].id);
+          console.log(
+            `[체력 측정] 카드 매칭 성공: exercise_name="${exerciseName}", card_id=${matchedCards[0].id}`
+          );
         } else {
-          // target_audience가 일치하지 않으면 경고 로그 출력
-          console.warn(
-            `[체력 측정] 카드 매칭 실패: exercise_name="${exerciseName}", target_audience="${targetAudience}"에 해당하는 카드를 찾을 수 없습니다.`
+          // 여전히 매칭 실패
+          console.error(
+            `[체력 측정] 카드 매칭 실패: exercise_name="${exerciseName}"에 해당하는 카드를 찾을 수 없습니다.`
           );
         }
       }
@@ -279,14 +293,19 @@ const createMeasurement = async (req, res) => {
     const uniqueMainCardIds = removeDuplicatesInArray(mainCardIdArray);
     const uniqueCoolDownCardIds = removeDuplicatesInArray(coolDownCardIdArray);
 
-    const warmUpCardsString = uniqueWarmUpCardIds.join(",");
-    const mainCardsString = uniqueMainCardIds.join(",");
-    const coolDownCardsString = uniqueCoolDownCardIds.join(",");
+    const warmUpCardsString = uniqueWarmUpCardIds.length > 0 ? uniqueWarmUpCardIds.join(",") : "";
+    const mainCardsString = uniqueMainCardIds.length > 0 ? uniqueMainCardIds.join(",") : "";
+    const coolDownCardsString = uniqueCoolDownCardIds.length > 0 ? uniqueCoolDownCardIds.join(",") : "";
 
     console.log("[체력 측정] 카드 ID 매칭 완료:");
-    console.log("[체력 측정] - 준비운동 카드:", warmUpCardsString || "없음");
-    console.log("[체력 측정] - 본운동 카드:", mainCardsString || "없음");
-    console.log("[체력 측정] - 정리운동 카드:", coolDownCardsString || "없음");
+    console.log("[체력 측정] - 준비운동 카드 개수:", uniqueWarmUpCardIds.length, "->", warmUpCardsString || "없음");
+    console.log("[체력 측정] - 본운동 카드 개수:", uniqueMainCardIds.length, "->", mainCardsString || "없음");
+    console.log("[체력 측정] - 정리운동 카드 개수:", uniqueCoolDownCardIds.length, "->", coolDownCardsString || "없음");
+
+    // 카드가 하나도 매칭되지 않은 경우 경고
+    if (uniqueWarmUpCardIds.length === 0 && uniqueMainCardIds.length === 0 && uniqueCoolDownCardIds.length === 0) {
+      console.error("[체력 측정] 경고: 모든 카드 매칭 실패! 레시피에 카드가 없습니다.");
+    }
 
     // duration 계산: 각 카테고리별로 계산 후 합산 (카테고리 간 중복 허용)
     const calculateCategoryDuration = async (cardIds) => {
@@ -317,6 +336,15 @@ const createMeasurement = async (req, res) => {
 
     console.log("[체력 측정] 총 소요 시간:", durationMin + "분");
     console.log("[체력 측정] Recipe DB 저장 시작...");
+    console.log("[체력 측정] 저장할 카드 값:");
+    console.log("[체력 측정] - warm_up_cards:", warmUpCardsString || "(빈 문자열)", "타입:", typeof warmUpCardsString);
+    console.log("[체력 측정] - main_cards:", mainCardsString || "(빈 문자열)", "타입:", typeof mainCardsString);
+    console.log("[체력 측정] - cool_down_cards:", coolDownCardsString || "(빈 문자열)", "타입:", typeof coolDownCardsString);
+
+    // 빈 문자열이 아닌지 확인 (NOT NULL 제약조건을 위해)
+    const finalWarmUpCards = warmUpCardsString || "";
+    const finalMainCards = mainCardsString || "";
+    const finalCoolDownCards = coolDownCardsString || "";
 
     const [recipeResult] = await pool.execute(
       `INSERT INTO recipe (
@@ -341,9 +369,9 @@ const createMeasurement = async (req, res) => {
         durationMin,
         aiResponse.fitnessGrade || "참가",
         aiResponse.fitnessScore || 0,
-        warmUpCardsString,
-        mainCardsString,
-        coolDownCardsString,
+        finalWarmUpCards,
+        finalMainCards,
+        finalCoolDownCards,
       ]
     );
 
@@ -357,6 +385,12 @@ const createMeasurement = async (req, res) => {
     );
 
     const recipe = recipes[0];
+    
+    // 저장된 값 확인
+    console.log("[체력 측정] 저장된 레시피에서 조회한 카드 값:");
+    console.log("[체력 측정] - warm_up_cards:", recipe.warm_up_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.warm_up_cards);
+    console.log("[체력 측정] - main_cards:", recipe.main_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.main_cards);
+    console.log("[체력 측정] - cool_down_cards:", recipe.cool_down_cards || "(NULL 또는 빈 문자열)", "타입:", typeof recipe.cool_down_cards);
 
     const getAllCardIds = (cardsString) => {
       if (!cardsString) return [];

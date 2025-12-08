@@ -32,85 +32,85 @@ const AGE_GROUP_FIELDS = {
     "MESURE_IEM_051_VALUE",
   ],
   유소년기: [
-    "MESURE_AGE_CO",
-    "SEXDSTN_FLAG_CD",
-    "MESURE_IEM_001_VALUE",
-    "MESURE_IEM_002_VALUE",
-    "MESURE_IEM_004_VALUE",
-    "MESURE_IEM_007_VALUE",
-    "MESURE_IEM_008_VALUE",
-    "MESURE_IEM_009_VALUE",
-    "MESURE_IEM_012_VALUE",
-    "MESURE_IEM_018_VALUE",
-    "MESURE_IEM_020_VALUE",
-    "MESURE_IEM_022_VALUE",
-    "MESURE_IEM_028_VALUE",
-    "MESURE_IEM_042_VALUE",
-    "MESURE_IEM_043_VALUE",
-    "MESURE_IEM_044_VALUE",
+    "MESURE_AGE_CO", // 나이
+    "SEXDSTN_FLAG_CD", // 성별
+    "MESURE_IEM_001_VALUE", // 신장
+    "MESURE_IEM_002_VALUE", // 체중
+    "MESURE_IEM_004_VALUE", // 허리둘레
+    "MESURE_IEM_007_VALUE", // 악력_좌
+    "MESURE_IEM_008_VALUE", // 악력_우
+    "MESURE_IEM_009_VALUE", // 윗몸말아올리기
+    "MESURE_IEM_012_VALUE", // 앉아윗몸앞으로굽히기
+    "MESURE_IEM_018_VALUE", // BMI
+    "MESURE_IEM_020_VALUE", // 왕복오래달리기
+    "MESURE_IEM_022_VALUE", // 제자리 멀리뛰기
+    "MESURE_IEM_028_VALUE", // 상대악력
+    "MESURE_IEM_042_VALUE", // 허리둘레-신장비
+    "MESURE_IEM_043_VALUE", // 반복옆뛰기
+    "MESURE_IEM_044_VALUE", // 눈-손 협응력
   ],
   청소년기: [
-    "MESURE_AGE_CO",
-    "SEXDSTN_FLAG_CD",
-    "MESURE_IEM_001_VALUE",
-    "MESURE_IEM_002_VALUE",
-    "MESURE_IEM_003_VALUE",
-    "MESURE_IEM_005_VALUE",
-    "MESURE_IEM_006_VALUE",
-    "MESURE_IEM_007_VALUE",
-    "MESURE_IEM_009_VALUE",
-    "MESURE_IEM_010_VALUE",
-    "MESURE_IEM_012_VALUE",
-    "MESURE_IEM_013_VALUE",
-    "MESURE_IEM_014_VALUE",
-    "MESURE_IEM_015_VALUE",
-    "MESURE_IEM_016_VALUE",
-    "MESURE_IEM_017_VALUE",
-    "MESURE_IEM_018_VALUE",
-    "MESURE_IEM_020_VALUE",
-    "MESURE_IEM_022_VALUE",
-    "MESURE_IEM_028_VALUE",
-    "MESURE_IEM_030_VALUE",
+    "MESURE_AGE_CO", // 나이
+    "SEXDSTN_FLAG_CD", // 성별
+    "MESURE_IEM_001_VALUE", // 신장
+    "MESURE_IEM_002_VALUE", // 체중
+    "MESURE_IEM_003_VALUE", // 체지방율
+    "MESURE_IEM_005_VALUE", // 이완기혈압_최저
+    "MESURE_IEM_006_VALUE", // 수축기혈압_최고
+    "MESURE_IEM_007_VALUE", // 악력_좌
+    "MESURE_IEM_008_VALUE", // 악력_우
+    "MESURE_IEM_009_VALUE", // 윗몸말아올리기
+    "MESURE_IEM_012_VALUE", // 앉아윗몸앞으로굽히기
+    "MESURE_IEM_013_VALUE", // 일리노이
+    "MESURE_IEM_014_VALUE", // 체공시간
+    "MESURE_IEM_015_VALUE", // 협응력시간
+    "MESURE_IEM_016_VALUE", // 협응력실수횟수
+    "MESURE_IEM_017_VALUE", // 협응력계산결과값
+    "MESURE_IEM_018_VALUE", // BMI
+    "MESURE_IEM_020_VALUE", // 왕복오래달리기
+    "MESURE_IEM_022_VALUE", // 제자리 멀리뛰기
+    "MESURE_IEM_028_VALUE", // 상대악력
+    "MESURE_IEM_030_VALUE", // 왕복오래달리기출력
   ],
   성인기: [
-    "MESURE_AGE_CO",
-    "SEXDSTN_FLAG_CD",
-    "MESURE_IEM_001_VALUE",
-    "MESURE_IEM_002_VALUE",
-    "MESURE_IEM_003_VALUE",
-    "MESURE_IEM_004_VALUE",
-    "MESURE_IEM_005_VALUE",
-    "MESURE_IEM_006_VALUE",
-    "MESURE_IEM_007_VALUE",
-    "MESURE_IEM_008_VALUE",
-    "MESURE_IEM_012_VALUE",
-    "MESURE_IEM_018_VALUE",
-    "MESURE_IEM_019_VALUE",
-    "MESURE_IEM_022_VALUE",
-    "MESURE_IEM_028_VALUE",
-    "MESURE_IEM_036_VALUE",
-    "MESURE_IEM_037_VALUE",
-    "MESURE_IEM_040_VALUE",
+    "MESURE_AGE_CO", // 나이
+    "SEXDSTN_FLAG_CD", // 성별
+    "MESURE_IEM_001_VALUE", // 신장
+    "MESURE_IEM_002_VALUE", // 체중
+    "MESURE_IEM_003_VALUE", // 체지방율
+    "MESURE_IEM_004_VALUE", // 허리둘레
+    "MESURE_IEM_005_VALUE", // 이완기혈압_최저
+    "MESURE_IEM_006_VALUE", // 수축기혈압_최고
+    "MESURE_IEM_007_VALUE", // 악력_좌
+    "MESURE_IEM_008_VALUE", // 악력_우
+    "MESURE_IEM_012_VALUE", // 앉아윗몸앞으로굽히기
+    "MESURE_IEM_018_VALUE", // BMI
+    "MESURE_IEM_019_VALUE", // 교차윗몸일으키기
+    "MESURE_IEM_022_VALUE", // 제자리 멀리뛰기
+    "MESURE_IEM_028_VALUE", // 상대악력
+    "MESURE_IEM_036_VALUE", // 스텝검사_회복시 심박수
+    "MESURE_IEM_037_VALUE", // 스텝검사_출력
+    "MESURE_IEM_040_VALUE", // 반응시간
   ],
   어르신기: [
-    "MESURE_AGE_CO",
-    "SEXDSTN_FLAG_CD",
-    "MESURE_IEM_001_VALUE",
-    "MESURE_IEM_002_VALUE",
-    "MESURE_IEM_003_VALUE",
-    "MESURE_IEM_004_VALUE",
-    "MESURE_IEM_005_VALUE",
-    "MESURE_IEM_006_VALUE",
-    "MESURE_IEM_007_VALUE",
-    "MESURE_IEM_008_VALUE",
-    "MESURE_IEM_012_VALUE",
-    "MESURE_IEM_018_VALUE",
-    "MESURE_IEM_023_VALUE",
-    "MESURE_IEM_025_VALUE",
-    "MESURE_IEM_026_VALUE",
-    "MESURE_IEM_027_VALUE",
-    "MESURE_IEM_028_VALUE",
-    "MESURE_IEM_052_VALUE",
+    "MESURE_AGE_CO", // 나이
+    "SEXDSTN_FLAG_CD", // 성별
+    "MESURE_IEM_001_VALUE", // 신장
+    "MESURE_IEM_002_VALUE", // 체중
+    "MESURE_IEM_003_VALUE", // 체지방율
+    "MESURE_IEM_004_VALUE", // 허리둘레
+    "MESURE_IEM_005_VALUE", // 이완기혈압_최저
+    "MESURE_IEM_006_VALUE", // 수축기혈압_최고
+    "MESURE_IEM_007_VALUE", // 악력_좌
+    "MESURE_IEM_008_VALUE", // 악력_우
+    "MESURE_IEM_012_VALUE", // 앉아윗몸앞으로굽히기
+    "MESURE_IEM_018_VALUE", // BMI
+    "MESURE_IEM_023_VALUE", // 의자에앉았다일어서기
+    "MESURE_IEM_025_VALUE", // 2분제자리걷기
+    "MESURE_IEM_026_VALUE", // 의자에앉아 3m표적 돌아오기
+    "MESURE_IEM_027_VALUE", // 팔자보행
+    "MESURE_IEM_028_VALUE", // 상대악력
+    "MESURE_IEM_052_VALUE", // 절대악력
   ],
 };
 
