@@ -524,6 +524,46 @@ const createMeasurement = async (req, res) => {
       return weaknesses;
     };
 
+    // 본운동 카드에서 body_part 추출하여 운동 부위 목록 생성
+    const extractBodyPartsFromMainCards = (mainCards) => {
+      const bodyParts = [];
+      const bodyPartSet = new Set();
+
+      // 무의미한 값 필터링
+      const meaninglessValues = [
+        "",
+        "/",
+        "-",
+        "없음",
+        "null",
+        "undefined",
+        "N/A",
+        "n/a",
+      ];
+
+      // 본운동 카드들의 body_part 수집 (중복 제거 및 무의미한 값 제외)
+      mainCards.forEach((card) => {
+        if (card.body_part) {
+          const trimmed = card.body_part.trim();
+          // 무의미한 값이 아니고, 길이가 1 이상인 경우만 추가
+          if (
+            trimmed !== "" &&
+            !meaninglessValues.includes(trimmed.toLowerCase()) &&
+            trimmed.length > 1
+          ) {
+            bodyPartSet.add(trimmed);
+          }
+        }
+      });
+
+      // body_part를 배열로 변환
+      bodyParts.push(...Array.from(bodyPartSet));
+
+      console.log("[체력 측정] 본운동에서 추출한 body_part:", bodyParts);
+
+      return bodyParts;
+    };
+
     // grass_history 테이블의 measurement 컬럼 업데이트
     // today 변수는 이미 위에서 선언되었으므로 YYYY-MM-DD 형식으로 변환
     const todayDateString = today.toISOString().split("T")[0]; // YYYY-MM-DD 형식
@@ -648,9 +688,13 @@ const createMeasurement = async (req, res) => {
       ];
     }
 
+    // 운동 부위 추출 (본운동 카드의 body_part)
+    const bodyParts = extractBodyPartsFromMainCards(mainCardList);
+
     console.log("[체력 측정] percentile:", percentile);
     console.log("[체력 측정] strengths:", strengths);
     console.log("[체력 측정] weaknesses:", weaknesses);
+    console.log("[체력 측정] bodyParts:", bodyParts);
     console.log("[체력 측정] 응답 전송 준비 완료");
     console.log("=== [체력 측정] 완료 ===\n");
 
@@ -663,6 +707,7 @@ const createMeasurement = async (req, res) => {
       fitness_percentile: percentile,
       strengths: strengths,
       weaknesses: weaknesses,
+      body_parts: bodyParts, // 운동 부위 추가
       warm_up_card_list: warmUpCardList,
       main_card_list: mainCardList,
       cool_down_card_list: coolDownCardList,
