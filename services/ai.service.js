@@ -241,6 +241,8 @@ const generateRecipe = async (measurementData) => {
         const warmUpExercises = groupExercise["준비운동"] || [];
         const mainExercises = groupExercise["본운동"] || [];
         const coolDownExercises = groupExercise["정리운동"] || [];
+
+        // 1단계: 예측 등급 찾기 (argmax)
         let maxIndex = 0;
         let maxValue = coawLogit[0] || 0;
         for (let i = 1; i < coawLogit.length; i++) {
@@ -257,12 +259,24 @@ const generateRecipe = async (measurementData) => {
           3: "참가",
         };
         const fitnessGrade = gradeMap[maxIndex] || "참가";
-        const fitnessScore = maxValue;
+
+        // 2단계: 등급별로 "하나의 차이값"만 사용하여 점수 계산
+        // 가장 간단한 규칙: 본인 등급 vs 바로 위 등급 차이만 봄
+        let fitnessScore;
+        if (maxIndex === 0) {
+          // 1등급은 2등급과의 차이
+          fitnessScore = (coawLogit[0] || 0) - (coawLogit[1] || 0);
+        } else {
+          // 나머지 등급은 바로 위 등급과의 차이
+          fitnessScore =
+            (coawLogit[maxIndex] || 0) - (coawLogit[maxIndex - 1] || 0);
+        }
 
         console.log("[AI Service] 체력 등급 계산:");
-        console.log("[AI Service] - maxIndex:", maxIndex);
-        console.log("[AI Service] - maxValue:", maxValue);
+        console.log("[AI Service] - maxIndex (예측 등급):", maxIndex);
+        console.log("[AI Service] - coawLogit:", coawLogit);
         console.log("[AI Service] - fitnessGrade:", fitnessGrade);
+        console.log("[AI Service] - fitnessScore (로짓 차이):", fitnessScore);
 
         const exerciseData = {
           준비운동: warmUpExercises,
